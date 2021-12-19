@@ -24,7 +24,7 @@ set preset {GTY-10GBASE-R}
 
 set freerun_freq {125}
 set line_rate {25.78125}
-set refclk_freq {161.1328125}
+set refclk_freq {322.265625}
 set qpll_fracn [expr {int(fmod($line_rate*1000/2 / $refclk_freq, 1)*pow(2, 24))}]
 set user_data_width {64}
 set int_data_width $user_data_width
@@ -66,6 +66,8 @@ proc create_gtwizard_ip {name preset config} {
 # variant with channel and common
 dict set config ENABLE_OPTIONAL_PORTS [concat $extra_pll_ports $extra_ports]
 dict set config LOCATE_COMMON {CORE}
+
+# dict set config CHANNEL_ENABLE {X0Y19 X0Y18 X0Y17 X0Y16 X0Y15 X0Y14 X0Y13 X0Y12}
 
 create_gtwizard_ip "${base_name}_full" $preset $config
 
