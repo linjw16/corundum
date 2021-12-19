@@ -41,66 +41,58 @@ static int mqnic_start_port(struct net_device *ndev)
 	struct mqnic_dev *mdev = priv->mdev;
 	int k;
 
-	dev_info(mdev->dev, "%s on port %d", __func__, priv->port);
+	dev_info(mdev->dev, "%s on port %d", __func__, priv->index);
 
-	// set up event queues
-	for (k = 0; k < priv->event_queue_count; k++) {
-		priv->event_ring[k]->irq = mdev->irq_map[k % mdev->irq_count];
-		mqnic_activate_eq_ring(priv, priv->event_ring[k], k % mdev->irq_count);
-		mqnic_arm_eq(priv->event_ring[k]);
-	}
-
-	// set up RX completion queues
-	for (k = 0; k < priv->rx_cpl_queue_count; k++) {
-		mqnic_activate_cq_ring(priv, priv->rx_cpl_ring[k], k % priv->event_queue_count);
-		priv->rx_cpl_ring[k]->ring_index = k;
-		priv->rx_cpl_ring[k]->handler = mqnic_rx_irq;
+	// set up RX queues
+	for (k = 0; k < min(priv->rx_queue_count, priv->rx_cpl_queue_count); k++) {
+		// set up CQ
+		mqnic_activate_cq_ring(priv->rx_cpl_ring[k],
+				priv->event_ring[k % priv->event_queue_count]);
 
 		netif_napi_add(ndev, &priv->rx_cpl_ring[k]->napi,
 				mqnic_poll_rx_cq, NAPI_POLL_WEIGHT);
 		napi_enable(&priv->rx_cpl_ring[k]->napi);
 
 		mqnic_arm_cq(priv->rx_cpl_ring[k]);
-	}
 
-	// set up RX queues
-	for (k = 0; k < priv->rx_queue_count; k++) {
+		// set up queue
 		priv->rx_ring[k]->mtu = ndev->mtu;
 		if (ndev->mtu + ETH_HLEN <= PAGE_SIZE)
 			priv->rx_ring[k]->page_order = 0;
 		else
 			priv->rx_ring[k]->page_order = ilog2((ndev->mtu + ETH_HLEN + PAGE_SIZE - 1) / PAGE_SIZE - 1) + 1;
-		mqnic_activate_rx_ring(priv, priv->rx_ring[k], k);
+		mqnic_activate_rx_ring(priv->rx_ring[k], priv, priv->rx_cpl_ring[k]);
 	}
 
-	// set up TX completion queues
-	for (k = 0; k < priv->tx_cpl_queue_count; k++) {
-		mqnic_activate_cq_ring(priv, priv->tx_cpl_ring[k], k % priv->event_queue_count);
-		priv->tx_cpl_ring[k]->ring_index = k;
-		priv->tx_cpl_ring[k]->handler = mqnic_tx_irq;
+	// set up TX queues
+	for (k = 0; k < min(priv->tx_queue_count, priv->tx_cpl_queue_count); k++) {
+		// set up CQ
+		mqnic_activate_cq_ring(priv->tx_cpl_ring[k],
+				priv->event_ring[k % priv->event_queue_count]);
 
 		netif_tx_napi_add(ndev, &priv->tx_cpl_ring[k]->napi,
 				mqnic_poll_tx_cq, NAPI_POLL_WEIGHT);
 		napi_enable(&priv->tx_cpl_ring[k]->napi);
 
 		mqnic_arm_cq(priv->tx_cpl_ring[k]);
-	}
 
-	// set up TX queues
-	for (k = 0; k < priv->tx_queue_count; k++) {
-		mqnic_activate_tx_ring(priv, priv->tx_ring[k], k);
+		// set up queue
 		priv->tx_ring[k]->tx_queue = netdev_get_tx_queue(ndev, k);
+		mqnic_activate_tx_ring(priv->tx_ring[k], priv, priv->tx_cpl_ring[k]);
 	}
 
 	// configure ports
 	for (k = 0; k < priv->port_count; k++) {
 		// set port MTU
-		mqnic_port_set_tx_mtu(priv->ports[k], ndev->mtu + ETH_HLEN);
-		mqnic_port_set_rx_mtu(priv->ports[k], ndev->mtu + ETH_HLEN);
+		mqnic_port_set_tx_mtu(priv->port[k], ndev->mtu + ETH_HLEN);
+		mqnic_port_set_rx_mtu(priv->port[k], ndev->mtu + ETH_HLEN);
+
+		// configure RSS
+		mqnic_port_set_rss_mask(priv->port[k], 0xffffffff);
 	}
 
 	// enable first port
-	mqnic_activate_port(priv->ports[0]);
+	mqnic_activate_port(priv->port[0]);
 
 	priv->port_up = true;
 
@@ -119,7 +111,7 @@ static int mqnic_stop_port(struct net_device *ndev)
 	struct mqnic_dev *mdev = priv->mdev;
 	int k;
 
-	dev_info(mdev->dev, "%s on port %d", __func__, priv->port);
+	dev_info(mdev->dev, "%s on port %d", __func__, priv->index);
 
 	netif_tx_lock_bh(ndev);
 //	if (detach)
@@ -136,45 +128,37 @@ static int mqnic_stop_port(struct net_device *ndev)
 
 	// disable ports
 	for (k = 0; k < priv->port_count; k++)
-		mqnic_deactivate_port(priv->ports[k]);
+		mqnic_deactivate_port(priv->port[k]);
 
 	// deactivate TX queues
-	for (k = 0; k < priv->tx_queue_count; k++)
-		mqnic_deactivate_tx_ring(priv, priv->tx_ring[k]);
+	for (k = 0; k < min(priv->tx_queue_count, priv->tx_cpl_queue_count); k++) {
+		mqnic_deactivate_tx_ring(priv->tx_ring[k]);
 
-	// deactivate TX completion queues
-	for (k = 0; k < priv->tx_cpl_queue_count; k++) {
-		mqnic_deactivate_cq_ring(priv, priv->tx_cpl_ring[k]);
+		mqnic_deactivate_cq_ring(priv->tx_cpl_ring[k]);
 
 		napi_disable(&priv->tx_cpl_ring[k]->napi);
 		netif_napi_del(&priv->tx_cpl_ring[k]->napi);
 	}
 
 	// deactivate RX queues
-	for (k = 0; k < priv->rx_queue_count; k++)
-		mqnic_deactivate_rx_ring(priv, priv->rx_ring[k]);
+	for (k = 0; k < min(priv->rx_queue_count, priv->rx_cpl_queue_count); k++) {
+		mqnic_deactivate_rx_ring(priv->rx_ring[k]);
 
-	// deactivate RX completion queues
-	for (k = 0; k < priv->rx_cpl_queue_count; k++) {
-		mqnic_deactivate_cq_ring(priv, priv->rx_cpl_ring[k]);
+		mqnic_deactivate_cq_ring(priv->rx_cpl_ring[k]);
 
 		napi_disable(&priv->rx_cpl_ring[k]->napi);
 		netif_napi_del(&priv->rx_cpl_ring[k]->napi);
 	}
 
-	// deactivate event queues
-	for (k = 0; k < priv->event_queue_count; k++)
-		mqnic_deactivate_eq_ring(priv, priv->event_ring[k]);
-
 	msleep(20);
 
 	// free descriptors in TX queues
 	for (k = 0; k < priv->tx_queue_count; k++)
-		mqnic_free_tx_buf(priv, priv->tx_ring[k]);
+		mqnic_free_tx_buf(priv->tx_ring[k]);
 
 	// free descriptors in RX queues
 	for (k = 0; k < priv->rx_queue_count; k++)
-		mqnic_free_rx_buf(priv, priv->rx_ring[k]);
+		mqnic_free_rx_buf(priv->rx_ring[k]);
 
 	netif_carrier_off(ndev);
 	return 0;
@@ -191,7 +175,7 @@ static int mqnic_open(struct net_device *ndev)
 	ret = mqnic_start_port(ndev);
 
 	if (ret)
-		dev_err(mdev->dev, "Failed to start port: %d", priv->port);
+		dev_err(mdev->dev, "Failed to start port: %d", priv->index);
 
 	mutex_unlock(&mdev->state_lock);
 	return ret;
@@ -208,7 +192,7 @@ static int mqnic_close(struct net_device *ndev)
 	ret = mqnic_stop_port(ndev);
 
 	if (ret)
-		dev_err(mdev->dev, "Failed to stop port: %d", priv->port);
+		dev_err(mdev->dev, "Failed to stop port: %d", priv->index);
 
 	mutex_unlock(&mdev->state_lock);
 	return ret;
@@ -366,9 +350,10 @@ static const struct net_device_ops mqnic_netdev_ops = {
 	.ndo_do_ioctl = mqnic_ioctl,
 };
 
-int mqnic_init_netdev(struct mqnic_dev *mdev, int port, u8 __iomem *hw_addr)
+int mqnic_create_netdev(struct mqnic_if *interface, struct net_device **ndev_ptr, int index)
 {
-	struct device *dev = mdev->dev;
+	struct mqnic_dev *mdev = interface->mdev;
+	struct device *dev = interface->dev;
 	struct net_device *ndev;
 	struct mqnic_priv *priv;
 	int ret = 0;
@@ -382,7 +367,7 @@ int mqnic_init_netdev(struct mqnic_dev *mdev, int port, u8 __iomem *hw_addr)
 	}
 
 	SET_NETDEV_DEV(ndev, dev);
-	ndev->dev_port = port;
+	ndev->dev_port = index;
 
 	// init private data
 	priv = netdev_priv(ndev);
@@ -391,60 +376,38 @@ int mqnic_init_netdev(struct mqnic_dev *mdev, int port, u8 __iomem *hw_addr)
 	spin_lock_init(&priv->stats_lock);
 
 	priv->ndev = ndev;
-	priv->mdev = mdev;
+	priv->mdev = interface->mdev;
+	priv->interface = interface;
 	priv->dev = dev;
-	priv->port = port;
+	priv->index = index;
 	priv->port_up = false;
 
-	priv->hw_addr = hw_addr;
-	priv->csr_hw_addr = hw_addr + mdev->if_csr_offset;
+	// associate interface resources
+	priv->if_features = interface->if_features;
 
-	// read ID registers
-	priv->if_id = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_IF_ID);
-	dev_info(dev, "IF ID: 0x%08x", priv->if_id);
-	priv->if_features = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_IF_FEATURES);
-	dev_info(dev, "IF features: 0x%08x", priv->if_features);
+	priv->event_queue_count = interface->event_queue_count;
+	for (k = 0; k < interface->event_queue_count; k++)
+		priv->event_ring[k] = interface->event_ring[k];
 
-	priv->event_queue_count = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_EVENT_QUEUE_COUNT);
-	dev_info(dev, "Event queue count: %d", priv->event_queue_count);
-	priv->event_queue_offset = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_EVENT_QUEUE_OFFSET);
-	dev_info(dev, "Event queue offset: 0x%08x", priv->event_queue_offset);
-	priv->tx_queue_count = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_TX_QUEUE_COUNT);
-	dev_info(dev, "TX queue count: %d", priv->tx_queue_count);
-	priv->tx_queue_offset = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_TX_QUEUE_OFFSET);
-	dev_info(dev, "TX queue offset: 0x%08x", priv->tx_queue_offset);
-	priv->tx_cpl_queue_count = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_TX_CPL_QUEUE_COUNT);
-	dev_info(dev, "TX completion queue count: %d", priv->tx_cpl_queue_count);
-	priv->tx_cpl_queue_offset = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_TX_CPL_QUEUE_OFFSET);
-	dev_info(dev, "TX completion queue offset: 0x%08x", priv->tx_cpl_queue_offset);
-	priv->rx_queue_count = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_RX_QUEUE_COUNT);
-	dev_info(dev, "RX queue count: %d", priv->rx_queue_count);
-	priv->rx_queue_offset = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_RX_QUEUE_OFFSET);
-	dev_info(dev, "RX queue offset: 0x%08x", priv->rx_queue_offset);
-	priv->rx_cpl_queue_count = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_RX_CPL_QUEUE_COUNT);
-	dev_info(dev, "RX completion queue count: %d", priv->rx_cpl_queue_count);
-	priv->rx_cpl_queue_offset = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_RX_CPL_QUEUE_OFFSET);
-	dev_info(dev, "RX completion queue offset: 0x%08x", priv->rx_cpl_queue_offset);
-	priv->port_count = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_PORT_COUNT);
-	dev_info(dev, "Port count: %d", priv->port_count);
-	priv->port_offset = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_PORT_OFFSET);
-	dev_info(dev, "Port offset: 0x%08x", priv->port_offset);
-	priv->port_stride = ioread32(priv->csr_hw_addr + MQNIC_IF_REG_PORT_STRIDE);
-	dev_info(dev, "Port stride: 0x%08x", priv->port_stride);
+	priv->tx_queue_count = interface->tx_queue_count;
+	for (k = 0; k < interface->tx_queue_count; k++)
+		priv->tx_ring[k] = interface->tx_ring[k];
 
-	if (priv->event_queue_count > MQNIC_MAX_EVENT_RINGS)
-		priv->event_queue_count = MQNIC_MAX_EVENT_RINGS;
-	if (priv->tx_queue_count > MQNIC_MAX_TX_RINGS)
-		priv->tx_queue_count = MQNIC_MAX_TX_RINGS;
-	if (priv->tx_cpl_queue_count > MQNIC_MAX_TX_CPL_RINGS)
-		priv->tx_cpl_queue_count = MQNIC_MAX_TX_CPL_RINGS;
-	if (priv->rx_queue_count > MQNIC_MAX_RX_RINGS)
-		priv->rx_queue_count = MQNIC_MAX_RX_RINGS;
-	if (priv->rx_cpl_queue_count > MQNIC_MAX_RX_CPL_RINGS)
-		priv->rx_cpl_queue_count = MQNIC_MAX_RX_CPL_RINGS;
+	priv->tx_cpl_queue_count = interface->tx_cpl_queue_count;
+	for (k = 0; k < interface->tx_cpl_queue_count; k++)
+		priv->tx_cpl_ring[k] = interface->tx_cpl_ring[k];
 
-	if (priv->port_count > MQNIC_MAX_PORTS)
-		priv->port_count = MQNIC_MAX_PORTS;
+	priv->rx_queue_count = interface->rx_queue_count;
+	for (k = 0; k < interface->rx_queue_count; k++)
+		priv->rx_ring[k] = interface->rx_ring[k];
+
+	priv->rx_cpl_queue_count = interface->rx_cpl_queue_count;
+	for (k = 0; k < interface->rx_cpl_queue_count; k++)
+		priv->rx_cpl_ring[k] = interface->rx_cpl_ring[k];
+
+	priv->port_count = interface->port_count;
+	for (k = 0; k < interface->port_count; k++)
+		priv->port[k] = interface->port[k];
 
 	netif_set_real_num_tx_queues(ndev, priv->tx_queue_count);
 	netif_set_real_num_rx_queues(ndev, priv->rx_queue_count);
@@ -452,11 +415,11 @@ int mqnic_init_netdev(struct mqnic_dev *mdev, int port, u8 __iomem *hw_addr)
 	// set MAC
 	ndev->addr_len = ETH_ALEN;
 
-	if (port >= mdev->mac_count) {
+	if (index >= mdev->mac_count) {
 		dev_warn(dev, "Exhausted permanent MAC addresses; using random MAC");
 		eth_hw_addr_random(ndev);
 	} else {
-		memcpy(ndev->dev_addr, mdev->mac_list[port], ETH_ALEN);
+		memcpy(ndev->dev_addr, mdev->mac_list[index], ETH_ALEN);
 
 		if (!is_valid_ether_addr(ndev->dev_addr)) {
 			dev_warn(dev, "Invalid MAC address in list; using random MAC");
@@ -468,60 +431,36 @@ int mqnic_init_netdev(struct mqnic_dev *mdev, int port, u8 __iomem *hw_addr)
 	priv->hwts_config.tx_type = HWTSTAMP_TX_OFF;
 	priv->hwts_config.rx_filter = HWTSTAMP_FILTER_NONE;
 
-	// determine desc block size
-	iowrite32(0xf << 8, hw_addr + priv->tx_queue_offset + MQNIC_QUEUE_ACTIVE_LOG_SIZE_REG);
-	priv->max_desc_block_size = 1 << ((ioread32(hw_addr + priv->tx_queue_offset + MQNIC_QUEUE_ACTIVE_LOG_SIZE_REG) >> 8) & 0xf);
-	iowrite32(0, hw_addr + priv->tx_queue_offset + MQNIC_QUEUE_ACTIVE_LOG_SIZE_REG);
+	desc_block_size = min_t(u32, interface->max_desc_block_size, 4);
 
-	dev_info(dev, "Max desc block size: %d", priv->max_desc_block_size);
-
-	priv->max_desc_block_size = priv->max_desc_block_size < MQNIC_MAX_FRAGS ? priv->max_desc_block_size : MQNIC_MAX_FRAGS;
-
-	desc_block_size = priv->max_desc_block_size < 4 ? priv->max_desc_block_size : 4;
-
-	// allocate rings
-	for (k = 0; k < priv->event_queue_count; k++) {
-		ret = mqnic_create_eq_ring(priv, &priv->event_ring[k], 1024, MQNIC_EVENT_SIZE, k,
-				hw_addr + priv->event_queue_offset + k * MQNIC_EVENT_QUEUE_STRIDE); // TODO configure/constant
-		if (ret)
-			goto fail;
-	}
-
+	// allocate ring buffers
 	for (k = 0; k < priv->tx_queue_count; k++) {
-		ret = mqnic_create_tx_ring(priv, &priv->tx_ring[k], 1024, MQNIC_DESC_SIZE * desc_block_size, k,
-				hw_addr + priv->tx_queue_offset + k * MQNIC_QUEUE_STRIDE); // TODO configure/constant
+		ret = mqnic_alloc_tx_ring(priv->tx_ring[k], mqnic_num_tx_queue_entries,
+				MQNIC_DESC_SIZE * desc_block_size);
 		if (ret)
 			goto fail;
 	}
 
 	for (k = 0; k < priv->tx_cpl_queue_count; k++) {
-		ret = mqnic_create_cq_ring(priv, &priv->tx_cpl_ring[k], 1024, MQNIC_CPL_SIZE, k,
-				hw_addr + priv->tx_cpl_queue_offset + k * MQNIC_CPL_QUEUE_STRIDE); // TODO configure/constant
+		ret = mqnic_alloc_cq_ring(priv->tx_cpl_ring[k], mqnic_num_tx_queue_entries,
+				MQNIC_CPL_SIZE);
 		if (ret)
 			goto fail;
 	}
 
 	for (k = 0; k < priv->rx_queue_count; k++) {
-		ret = mqnic_create_rx_ring(priv, &priv->rx_ring[k], 1024, MQNIC_DESC_SIZE, k,
-				hw_addr + priv->rx_queue_offset + k * MQNIC_QUEUE_STRIDE); // TODO configure/constant
+		ret = mqnic_alloc_rx_ring(priv->rx_ring[k], mqnic_num_rx_queue_entries,
+				MQNIC_DESC_SIZE);
 		if (ret)
 			goto fail;
 	}
 
 	for (k = 0; k < priv->rx_cpl_queue_count; k++) {
-		ret = mqnic_create_cq_ring(priv, &priv->rx_cpl_ring[k], 1024, MQNIC_CPL_SIZE, k,
-				hw_addr + priv->rx_cpl_queue_offset + k * MQNIC_CPL_QUEUE_STRIDE); // TODO configure/constant
+		ret = mqnic_alloc_cq_ring(priv->rx_cpl_ring[k], mqnic_num_rx_queue_entries,
+				MQNIC_CPL_SIZE);
+
 		if (ret)
 			goto fail;
-	}
-
-	for (k = 0; k < priv->port_count; k++) {
-		ret = mqnic_create_port(priv, &priv->ports[k], k,
-				hw_addr + priv->port_offset + k * priv->port_stride);
-		if (ret)
-			goto fail;
-
-		mqnic_port_set_rss_mask(priv->ports[k], 0xffffffff);
 	}
 
 	// entry points
@@ -543,63 +482,55 @@ int mqnic_init_netdev(struct mqnic_dev *mdev, int port, u8 __iomem *hw_addr)
 	ndev->min_mtu = ETH_MIN_MTU;
 	ndev->max_mtu = 1500;
 
-	if (priv->ports[0] && priv->ports[0]->port_mtu)
-		ndev->max_mtu = priv->ports[0]->port_mtu - ETH_HLEN;
+	if (priv->port[0] && priv->port[0]->port_mtu)
+		ndev->max_mtu = priv->port[0]->port_mtu - ETH_HLEN;
 
 	netif_carrier_off(ndev);
 
 	ret = register_netdev(ndev);
 	if (ret) {
-		dev_err(dev, "netdev registration failed on port %d", port);
+		dev_err(dev, "netdev registration failed on port %d", index);
 		goto fail;
 	}
 
 	priv->registered = 1;
 
-	mdev->ndev[port] = ndev;
+	*ndev_ptr = ndev;
 
 	return 0;
 
 fail:
-	mqnic_destroy_netdev(ndev);
+	mqnic_destroy_netdev(ndev_ptr);
 	return ret;
 }
 
-void mqnic_destroy_netdev(struct net_device *ndev)
+void mqnic_destroy_netdev(struct net_device **ndev_ptr)
 {
+	struct net_device *ndev = *ndev_ptr;
 	struct mqnic_priv *priv = netdev_priv(ndev);
-	struct mqnic_dev *mdev = priv->mdev;
 	int k;
 
 	if (priv->registered)
 		unregister_netdev(ndev);
 
-	mdev->ndev[priv->port] = NULL;
+	*ndev_ptr = NULL;
 
 	// free rings
-	for (k = 0; k < ARRAY_SIZE(priv->event_ring); k++)
-		if (priv->event_ring[k])
-			mqnic_destroy_eq_ring(priv, &priv->event_ring[k]);
-
 	for (k = 0; k < ARRAY_SIZE(priv->tx_ring); k++)
 		if (priv->tx_ring[k])
-			mqnic_destroy_tx_ring(priv, &priv->tx_ring[k]);
+			mqnic_free_tx_ring(priv->tx_ring[k]);
 
 	for (k = 0; k < ARRAY_SIZE(priv->tx_cpl_ring); k++)
 		if (priv->tx_cpl_ring[k])
-			mqnic_destroy_cq_ring(priv, &priv->tx_cpl_ring[k]);
+			mqnic_free_cq_ring(priv->tx_cpl_ring[k]);
 
 	for (k = 0; k < ARRAY_SIZE(priv->rx_ring); k++)
 		if (priv->rx_ring[k])
-			mqnic_destroy_rx_ring(priv, &priv->rx_ring[k]);
+			mqnic_free_rx_ring(priv->rx_ring[k]);
 
 	for (k = 0; k < ARRAY_SIZE(priv->rx_cpl_ring); k++)
 		if (priv->rx_cpl_ring[k])
-			mqnic_destroy_cq_ring(priv, &priv->rx_cpl_ring[k]);
-
-	for (k = 0; k < ARRAY_SIZE(priv->ports); k++)
-		if (priv->ports[k])
-			mqnic_destroy_port(priv, &priv->ports[k]);
+			mqnic_free_cq_ring(priv->rx_cpl_ring[k]);
 
 	free_netdev(ndev);
 }

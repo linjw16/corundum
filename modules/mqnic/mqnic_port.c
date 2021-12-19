@@ -35,10 +35,10 @@
 
 #include "mqnic.h"
 
-int mqnic_create_port(struct mqnic_priv *priv, struct mqnic_port **port_ptr,
+int mqnic_create_port(struct mqnic_if *interface, struct mqnic_port **port_ptr,
 		int index, u8 __iomem *hw_addr)
 {
-	struct device *dev = priv->dev;
+	struct device *dev = interface->dev;
 	struct mqnic_port *port;
 
 	port = kzalloc(sizeof(*port), GFP_KERNEL);
@@ -48,11 +48,11 @@ int mqnic_create_port(struct mqnic_priv *priv, struct mqnic_port **port_ptr,
 	*port_ptr = port;
 
 	port->dev = dev;
-	port->ndev = priv->ndev;
+	port->interface = interface;
 
 	port->index = index;
 
-	port->tx_queue_count = priv->tx_queue_count;
+	port->tx_queue_count = interface->tx_queue_count;
 
 	port->hw_addr = hw_addr;
 
@@ -78,7 +78,7 @@ int mqnic_create_port(struct mqnic_priv *priv, struct mqnic_port **port_ptr,
 	return 0;
 }
 
-void mqnic_destroy_port(struct mqnic_priv *priv, struct mqnic_port **port_ptr)
+void mqnic_destroy_port(struct mqnic_port **port_ptr)
 {
 	struct mqnic_port *port = *port_ptr;
 	*port_ptr = NULL;
