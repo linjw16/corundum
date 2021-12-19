@@ -666,7 +666,7 @@ class Port:
         await self.set_mtu(min(self.port_mtu, 9214))
 
         for k in range(self.sched_count):
-            p = Scheduler(self, k, self.hw_regs.create_window(self.sched_offset + k*self.sched_stride, self.sched_stride))
+            p = Scheduler(self, k, self.hw_regs.parent.create_window(self.hw_regs.get_parent_address(0) + self.sched_offset + k*self.sched_stride, self.sched_stride))
             self.schedulers.append(p)
 
     async def set_mtu(self, mtu):
@@ -782,9 +782,7 @@ class Interface:
             self.rx_cpl_queues.append(q)
 
         for k in range(self.port_count):
-            # p = Port(self, k, self.hw_regs.create_window(self.port_offset + k*self.port_stride, self.port_stride))
-            offset = self.port_offset + k*self.port_stride
-            p = Port(self, k, self.hw_regs.create_window(offset, self.hw_regs.size-offset))
+            p = Port(self, k, self.hw_regs.create_window(self.port_offset + k*self.port_stride, self.port_stride))
             await p.init()
             self.ports.append(p)
 
@@ -1048,13 +1046,13 @@ class Interrupt:
         self.queue = Queue()
         self.handler = handler
 
-        cocotb.fork(self._run())
+        cocotb.start_soon(self._run())
 
     @classmethod
     def from_edge(cls, index, signal, handler=None):
         obj = cls(index, handler)
         obj.signal = signal
-        cocotb.fork(obj._run_edge())
+        cocotb.start_soon(obj._run_edge())
         return obj
 
     async def interrupt(self):
@@ -1145,7 +1143,7 @@ class Driver:
         if irq:
             for index in range(len(irq)):
                 self.irq_list.append(Interrupt(index, self.interrupt_handler))
-            cocotb.fork(self._run_edge_interrupts(irq))
+            cocotb.start_soon(self._run_edge_interrupts(irq))
 
         await self.init_common()
 

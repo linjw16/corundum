@@ -47,6 +47,20 @@ MODULE_AUTHOR("Alex Forencich");
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_VERSION(DRIVER_VERSION);
 
+unsigned int mqnic_num_ev_queue_entries = 1024;
+unsigned int mqnic_num_tx_queue_entries = 1024;
+unsigned int mqnic_num_rx_queue_entries = 1024;
+
+module_param_named(num_ev_queue_entries, mqnic_num_ev_queue_entries,
+		   uint, 0444);
+MODULE_PARM_DESC(num_ev_queue_entries, "number of entries to allocate per event queue (default: 1024)");
+module_param_named(num_tx_queue_entries, mqnic_num_tx_queue_entries,
+		   uint, 0444);
+MODULE_PARM_DESC(num_tx_queue_entries, "number of entries to allocate per transmit queue (default: 1024)");
+module_param_named(num_rx_queue_entries, mqnic_num_rx_queue_entries,
+		   uint, 0444);
+MODULE_PARM_DESC(num_rx_queue_entries, "number of entries to allocate per receive queue (default: 1024)");
+
 static const struct pci_device_id mqnic_pci_id_table[] = {
 	{PCI_DEVICE(0x1234, 0x1001)},
 	{PCI_DEVICE(0x5543, 0x1001)},
@@ -78,41 +92,10 @@ static unsigned int mqnic_get_free_id(void)
 	return id;
 }
 
-static irqreturn_t mqnic_interrupt(int irq, void *data)
-{
-	struct mqnic_dev *mqnic = data;
-	struct mqnic_priv *priv;
-
-	int k, l;
-
-	for (k = 0; k < ARRAY_SIZE(mqnic->ndev); k++) {
-		if (unlikely(!mqnic->ndev[k]))
-			continue;
-
-		priv = netdev_priv(mqnic->ndev[k]);
-
-		if (unlikely(!priv->port_up))
-			continue;
-
-		for (l = 0; l < priv->event_queue_count; l++) {
-			if (unlikely(!priv->event_ring[l]))
-				continue;
-
-			if (priv->event_ring[l]->irq == irq) {
-				mqnic_process_eq(priv->ndev, priv->event_ring[l]);
-				mqnic_arm_eq(priv->event_ring[l]);
-			}
-		}
-	}
-
-	return IRQ_HANDLED;
-}
-
 static int mqnic_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	int ret = 0;
 	struct mqnic_dev *mqnic;
-	struct mqnic_priv *priv;
 	struct device *dev = &pdev->dev;
 
 	int k = 0;
@@ -282,24 +265,11 @@ static int mqnic_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent
 		goto fail_map_bars;
 	}
 
-	// Allocate MSI IRQs
-	mqnic->irq_count = pci_alloc_irq_vectors(pdev, 1, 32, PCI_IRQ_MSI);
-	if (mqnic->irq_count < 0) {
-		ret = -ENOMEM;
-		dev_err(dev, "Failed to allocate IRQs");
-		goto fail_map_bars;
-	}
-
 	// Set up interrupts
-	for (k = 0; k < mqnic->irq_count; k++) {
-		ret = pci_request_irq(pdev, k, mqnic_interrupt, NULL,
-				mqnic, "%s-%d", mqnic->name, k);
-		if (ret < 0) {
-			dev_err(dev, "Failed to request IRQ");
-			goto fail_irq;
-		}
-
-		mqnic->irq_map[k] = pci_irq_vector(pdev, k);
+	ret = mqnic_irq_init_pcie(mqnic);
+	if (ret) {
+		dev_err(dev, "Failed to set up interrupts");
+		goto fail_map_bars;
 	}
 
 	// Board-specific init
@@ -316,23 +286,23 @@ static int mqnic_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent
 	if (mqnic->phc_count)
 		mqnic_register_phc(mqnic);
 
+	mutex_init(&mqnic->state_lock);
+
 	// Set up interfaces
-	if (mqnic->if_count > MQNIC_MAX_IF)
-		mqnic->if_count = MQNIC_MAX_IF;
+	mqnic->if_count = min_t(u32, mqnic->if_count, MQNIC_MAX_IF);
 
 	for (k = 0; k < mqnic->if_count; k++) {
 		dev_info(dev, "Creating interface %d", k);
-		ret = mqnic_init_netdev(mqnic, k, mqnic->hw_addr + k * mqnic->if_stride);
+		ret = mqnic_create_interface(mqnic, &mqnic->interface[k], k, mqnic->hw_addr + k * mqnic->if_stride);
 		if (ret) {
-			dev_err(dev, "Failed to create net_device");
-			goto fail_init_netdev;
+			dev_err(dev, "Failed to create interface: %d", ret);
+			goto fail_create_if;
 		}
 	}
 
-	// pass module I2C clients to net_device instances
+	// pass module I2C clients to interface instances
 	for (k = 0; k < mqnic->if_count; k++) {
-		priv = netdev_priv(mqnic->ndev[k]);
-		priv->mod_i2c_client = mqnic->mod_i2c_client[k];
+		mqnic->interface[k]->mod_i2c_client = mqnic->mod_i2c_client[k];
 	}
 
 	mqnic->misc_dev.minor = MISC_DYNAMIC_MINOR;
@@ -350,25 +320,19 @@ static int mqnic_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent
 
 	pci_save_state(pdev);
 
-	mutex_init(&mqnic->state_lock);
-
 	// probe complete
 	return 0;
 
 	// error handling
 fail_miscdev:
-fail_init_netdev:
-	for (k = 0; k < ARRAY_SIZE(mqnic->ndev); k++)
-		if (mqnic->ndev[k])
-			mqnic_destroy_netdev(mqnic->ndev[k]);
+fail_create_if:
+	for (k = 0; k < ARRAY_SIZE(mqnic->interface); k++)
+		if (mqnic->interface[k])
+			mqnic_destroy_interface(&mqnic->interface[k]);
 	mqnic_unregister_phc(mqnic);
 	pci_clear_master(pdev);
 fail_board:
-	mqnic_board_deinit(mqnic);
-	for (k = 0; k < mqnic->irq_count; k++)
-		pci_free_irq(pdev, k, mqnic);
-fail_irq:
-	pci_free_irq_vectors(pdev);
+	mqnic_irq_deinit_pcie(mqnic);
 fail_map_bars:
 	if (mqnic->hw_addr)
 		pci_iounmap(pdev, mqnic->hw_addr);
@@ -400,17 +364,15 @@ static void mqnic_pci_remove(struct pci_dev *pdev)
 	list_del(&mqnic->dev_list_node);
 	spin_unlock(&mqnic_devices_lock);
 
-	for (k = 0; k < ARRAY_SIZE(mqnic->ndev); k++)
-		if (mqnic->ndev[k])
-			mqnic_destroy_netdev(mqnic->ndev[k]);
+	for (k = 0; k < ARRAY_SIZE(mqnic->interface); k++)
+		if (mqnic->interface[k])
+			mqnic_destroy_interface(&mqnic->interface[k]);
 
 	mqnic_unregister_phc(mqnic);
 
 	pci_clear_master(pdev);
 	mqnic_board_deinit(mqnic);
-	for (k = 0; k < mqnic->irq_count; k++)
-		pci_free_irq(pdev, k, mqnic);
-	pci_free_irq_vectors(pdev);
+	mqnic_irq_deinit_pcie(mqnic);
 	if (mqnic->hw_addr)
 		pci_iounmap(pdev, mqnic->hw_addr);
 	if (mqnic->app_hw_addr)

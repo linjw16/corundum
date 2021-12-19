@@ -35,7 +35,6 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 from cocotbext.pcie.core import RootComplex
-from cocotbext.axi.utils import hexdump_str
 
 try:
     from pcie_if import PcieIfDevice, PcieIfRxBus, PcieIfTxBus
@@ -55,7 +54,7 @@ class TB(object):
         self.log = SimLog("cocotb.tb")
         self.log.setLevel(logging.DEBUG)
 
-        cocotb.fork(Clock(dut.clk, 4, units="ns").start())
+        cocotb.start_soon(Clock(dut.clk, 4, units="ns").start())
 
         # PCIe
         self.rc = RootComplex()
@@ -76,9 +75,9 @@ class TB(object):
             rd_req_tx_seq_num=dut.s_axis_rd_req_tx_seq_num,
             rd_req_tx_seq_num_valid=dut.s_axis_rd_req_tx_seq_num_valid,
 
-            cfg_max_payload=dut.max_payload_size,
             rx_cpl_tlp_bus=PcieIfRxBus.from_prefix(dut, "rx_cpl_tlp"),
 
+            cfg_max_payload=dut.max_payload_size,
             cfg_max_read_req=dut.max_read_request_size,
             cfg_ext_tag_enable=dut.ext_tag_enable,
 
@@ -93,16 +92,16 @@ class TB(object):
 
         self.dev.functions[0].msi_multiple_message_capable = 5
 
-        self.dev.functions[0].configure_bar(0, 2**24)
-        self.dev.functions[0].configure_bar(2, 2**24)
+        self.dev.functions[0].configure_bar(0, 2**len(dut.axil_ctrl_awaddr))
+        self.dev.functions[0].configure_bar(2, 2**len(dut.axi_ram_awaddr))
 
         dut.bus_num.setimmediatevalue(0)
 
         # monitor error outputs
         self.status_error_cor_asserted = False
         self.status_error_uncor_asserted = False
-        cocotb.fork(self._run_monitor_status_error_cor())
-        cocotb.fork(self._run_monitor_status_error_uncor())
+        cocotb.start_soon(self._run_monitor_status_error_cor())
+        cocotb.start_soon(self._run_monitor_status_error_uncor())
 
     async def _run_monitor_status_error_cor(self):
         while True:

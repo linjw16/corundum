@@ -49,8 +49,8 @@ class TB(object):
         s_clk = int(os.getenv("S_CLK", "10"))
         m_clk = int(os.getenv("M_CLK", "11"))
 
-        cocotb.fork(Clock(dut.s_clk, s_clk, units="ns").start())
-        cocotb.fork(Clock(dut.m_clk, m_clk, units="ns").start())
+        cocotb.start_soon(Clock(dut.s_clk, s_clk, units="ns").start())
+        cocotb.start_soon(Clock(dut.m_clk, m_clk, units="ns").start())
 
         self.source = AxiStreamSource(AxiStreamBus.from_prefix(dut, "s_axis"), dut.s_clk, dut.s_rst)
         self.sink = AxiStreamSink(AxiStreamBus.from_prefix(dut, "m_axis"), dut.m_clk, dut.m_rst)
@@ -68,12 +68,12 @@ class TB(object):
         self.dut.s_rst.setimmediatevalue(0)
         for k in range(10):
             await RisingEdge(self.dut.s_clk)
-        self.dut.m_rst <= 1
-        self.dut.s_rst <= 1
+        self.dut.m_rst.value = 1
+        self.dut.s_rst.value = 1
         for k in range(10):
             await RisingEdge(self.dut.s_clk)
-        self.dut.m_rst <= 0
-        self.dut.s_rst <= 0
+        self.dut.m_rst.value = 0
+        self.dut.s_rst.value = 0
         for k in range(10):
             await RisingEdge(self.dut.s_clk)
 
@@ -81,10 +81,10 @@ class TB(object):
         self.dut.s_rst.setimmediatevalue(0)
         for k in range(10):
             await RisingEdge(self.dut.s_clk)
-        self.dut.s_rst <= 1
+        self.dut.s_rst.value = 1
         for k in range(10):
             await RisingEdge(self.dut.s_clk)
-        self.dut.s_rst <= 0
+        self.dut.s_rst.value = 0
         for k in range(10):
             await RisingEdge(self.dut.s_clk)
 
@@ -92,10 +92,10 @@ class TB(object):
         self.dut.m_rst.setimmediatevalue(0)
         for k in range(10):
             await RisingEdge(self.dut.m_clk)
-        self.dut.m_rst <= 1
+        self.dut.m_rst.value = 1
         for k in range(10):
             await RisingEdge(self.dut.m_clk)
-        self.dut.m_rst <= 0
+        self.dut.m_rst.value = 0
         for k in range(10):
             await RisingEdge(self.dut.m_clk)
 
