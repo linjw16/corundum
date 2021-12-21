@@ -1,8 +1,8 @@
 
 # FPGA settings
-FPGA_PART = xcku15p-ffve1760-2-e
+FPGA_PART = xczu19eg-ffvc1760-2-e
 FPGA_TOP = fpga
-FPGA_ARCH = kintexuplus
+FPGA_ARCH = zynquplus
 
 # Files for synthesis
 SYN_FILES = rtl/fpga.v
