@@ -135,7 +135,7 @@ dict set params PCIE_DMA_WRITE_TX_FC_ENABLE "1"
 
 # AXI lite interface configuration (control)
 dict set params AXIL_CTRL_DATA_WIDTH "32"
-dict set params AXIL_CTRL_ADDR_WIDTH "24"
+dict set params AXIL_CTRL_ADDR_WIDTH "32"
 
 # AXI lite interface configuration (application control)
 dict set params AXIL_APP_CTRL_DATA_WIDTH [dict get $params AXIL_CTRL_DATA_WIDTH]
