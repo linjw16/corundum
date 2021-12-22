@@ -1,17 +1,17 @@
 # XDC constraints for the Resnet F1000 board
-# part: xczu19eg-ffvc1760-2-e
+# part: zu19eg-ffvc1760-2-e
 
 # General configuration
-# set_property CFGBVS GND                                [current_design]
-# set_property CONFIG_VOLTAGE 1.8                        [current_design]
+# set_property CFGBVS GND									[current_design]
+# set_property CONFIG_VOLTAGE 1.8							[current_design]
 set_property BITSTREAM.GENERAL.COMPRESS true				[current_design]
 # set_property BITSTREAM.CONFIG.EXTMASTERCCLK_EN disable 	[current_design]
-# set_property BITSTREAM.CONFIG.SPI_32BIT_ADDR YES       [current_design]
-# set_property BITSTREAM.CONFIG.SPI_BUSWIDTH 4           [current_design]
-# set_property BITSTREAM.CONFIG.SPI_FALL_EDGE YES        [current_design]
-# set_property BITSTREAM.CONFIG.CONFIGRATE 85.0          [current_design]
-# set_property CONFIG_MODE SPIx4                         [current_design]
-# set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN Enable  [current_design]
+# set_property BITSTREAM.CONFIG.SPI_32BIT_ADDR YES			[current_design]
+# set_property BITSTREAM.CONFIG.SPI_BUSWIDTH 4				[current_design]
+# set_property BITSTREAM.CONFIG.SPI_FALL_EDGE YES			[current_design]
+# set_property BITSTREAM.CONFIG.CONFIGRATE 85.0				[current_design]
+# set_property CONFIG_MODE SPIx4							[current_design]
+# set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN Enable		[current_design]
 
 # System clocks
 # reference clock from QSFP, 25 MHz
@@ -31,18 +31,28 @@ create_clock -period 10.000 -name clk_100mhz [get_ports clk_100mhz_p]
 
 # E7 is not a global clock capable input, so need to set CLOCK_DEDICATED_ROUTE to satisfy DRC
 # set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets init_clk_ibuf_inst/O]
-# set_property CLOCK_DEDICATED_ROUTE ANY_CMT_COLUMN [get_nets clk_25mhz_ibufg]
 set_property CLOCK_DEDICATED_ROUTE ANY_CMT_COLUMN [get_nets clk_100mhz_ibufg]
 
+# DDR4 refclk1
+#set_property -dict {LOC AT32 IOSTANDARD DIFF_SSTL12} [get_ports clk_ddr4_refclk1_p]
+#set_property -dict {LOC AU32 IOSTANDARD DIFF_SSTL12} [get_ports clk_ddr4_refclk1_n]
+#create_clock -period 3.750 -name clk_ddr4_refclk1 [get_ports clk_ddr4_refclk1_p]
+
+# DDR4 refclk2
+#set_property -dict {LOC G29  IOSTANDARD DIFF_SSTL12} [get_ports clk_ddr4_refclk2_p]
+#set_property -dict {LOC G28  IOSTANDARD DIFF_SSTL12} [get_ports clk_ddr4_refclk2_n]
+#create_clock -period 3.750 -name clk_ddr4_refclk2 [get_ports clk_ddr4_refclk1_p]
+
 # LEDs: J11 H10 H11 G11 H13 G12 H14 G13
-set_property -dict {LOC J11 IOSTANDARD LVCMOS18 SLEW SLOW DRIVE 8} [get_ports led_sreg_d]
-set_property -dict {LOC H10 IOSTANDARD LVCMOS18 SLEW SLOW DRIVE 8} [get_ports led_sreg_ld]
-set_property -dict {LOC H11 IOSTANDARD LVCMOS18 SLEW SLOW DRIVE 8} [get_ports led_sreg_clk]
-set_property -dict {LOC G11 IOSTANDARD LVCMOS18 SLEW SLOW DRIVE 8} [get_ports {led_bmc[0]}]
-set_property -dict {LOC H13 IOSTANDARD LVCMOS18 SLEW SLOW DRIVE 8} [get_ports {led_bmc[1]}]
-set_property -dict {LOC G12 IOSTANDARD LVCMOS18 SLEW SLOW DRIVE 8} [get_ports {led_exp[0]}]
-set_property -dict {LOC H14 IOSTANDARD LVCMOS18 SLEW SLOW DRIVE 8} [get_ports {led_exp[1]}]
+set_property -dict {LOC J11 IOSTANDARD LVCMOS12 SLEW SLOW DRIVE 8} [get_ports led_sreg_d]
+set_property -dict {LOC H10 IOSTANDARD LVCMOS12 SLEW SLOW DRIVE 8} [get_ports led_sreg_ld]
+set_property -dict {LOC H11 IOSTANDARD LVCMOS12 SLEW SLOW DRIVE 8} [get_ports led_sreg_clk]
+set_property -dict {LOC G11 IOSTANDARD LVCMOS12 SLEW SLOW DRIVE 8} [get_ports {led_bmc[0]}]
+set_property -dict {LOC H13 IOSTANDARD LVCMOS12 SLEW SLOW DRIVE 8} [get_ports {led_bmc[1]}]
+set_property -dict {LOC G12 IOSTANDARD LVCMOS12 SLEW SLOW DRIVE 8} [get_ports {led_exp[0]}]
+set_property -dict {LOC H14 IOSTANDARD LVCMOS12 SLEW SLOW DRIVE 8} [get_ports {led_exp[1]}]
 # set_property -dict {LOC G13 IOSTANDARD LVCMOS12 SLEW SLOW DRIVE 8} [get_ports {led[7]}]
+
 set_false_path -to [get_ports {led_sreg_d led_sreg_ld led_sreg_clk led_bmc[*] led_exp[*]}]
 set_output_delay 0 [get_ports {led_sreg_d led_sreg_ld led_sreg_clk led_bmc[*] led_exp[*]}]
 

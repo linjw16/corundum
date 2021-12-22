@@ -202,9 +202,6 @@ proc configure_bar {pcie pf bar aperture} {
 
 # Control BAR (BAR 0)
 configure_bar $pcie 0 0 [dict get $params AXIL_CTRL_ADDR_WIDTH]
-# configure_bar $pcie 1 0 [dict get $params AXIL_CTRL_ADDR_WIDTH]
-# configure_bar $pcie 2 0 [dict get $params AXIL_CTRL_ADDR_WIDTH]
-# configure_bar $pcie 3 0 [dict get $params AXIL_CTRL_ADDR_WIDTH]
 
 # Application BAR (BAR 2)
 configure_bar $pcie 0 2 [expr [dict get $params APP_ENABLE] ? [dict get $params AXIL_APP_CTRL_ADDR_WIDTH] : 0]

@@ -2,25 +2,35 @@
 # part: zu19eg-ffvc1760-2-e
 
 # General configuration
-# set_property CFGBVS GND [current_design]
-# set_property CONFIG_VOLTAGE 1.8 [current_design]
-set_property BITSTREAM.GENERAL.COMPRESS true [current_design]
-# set_property BITSTREAM.CONFIG.EXTMASTERCCLK_EN {DIV-1} [current_design]
-# set_property BITSTREAM.CONFIG.SPI_32BIT_ADDR YES [current_design]
-# set_property BITSTREAM.CONFIG.SPI_BUSWIDTH 8 [current_design]
-# set_property BITSTREAM.CONFIG.SPI_FALL_EDGE YES [current_design]
-# set_property BITSTREAM.CONFIG.CONFIGRATE 85.0          [current_design]
-# set_property CONFIG_MODE SPIx4                         [current_design]
-# set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN Enable  [current_design]
+# set_property CFGBVS GND									[current_design]
+# set_property CONFIG_VOLTAGE 1.8							[current_design]
+set_property BITSTREAM.GENERAL.COMPRESS true				[current_design]
+# set_property BITSTREAM.CONFIG.EXTMASTERCCLK_EN disable 	[current_design]
+# set_property BITSTREAM.CONFIG.SPI_32BIT_ADDR YES			[current_design]
+# set_property BITSTREAM.CONFIG.SPI_BUSWIDTH 4				[current_design]
+# set_property BITSTREAM.CONFIG.SPI_FALL_EDGE YES			[current_design]
+# set_property BITSTREAM.CONFIG.CONFIGRATE 85.0				[current_design]
+# set_property CONFIG_MODE SPIx4							[current_design]
+# set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN Enable		[current_design]
 
 # System clocks
+# reference clock from QSFP, 25 MHz
+# set_property -dict {LOC B32 IOSTANDARD DIFF_SSTL12} [get_ports clk_ref_p]
+# set_property -dict {LOC B33 IOSTANDARD DIFF_SSTL12} [get_ports clk_ref_n]
+# create_clock -period 40.000 -name clk_ref_25mhz [get_ports clk_ref_p]
+
+# 25 MHz
+# set_property -dict {LOC AU21 IOSTANDARD DIFF_SSTL12} [get_ports clk_25mhz_p]
+# set_property -dict {LOC AV21 IOSTANDARD DIFF_SSTL12} [get_ports clk_25mhz_n]
+# create_clock -period 40.000 -name clk_25mhz [get_ports clk_25mhz_p]
+
 # 100 MHz
 set_property -dict {LOC G17 IOSTANDARD DIFF_SSTL12} [get_ports clk_100mhz_p]
 set_property -dict {LOC F17 IOSTANDARD DIFF_SSTL12} [get_ports clk_100mhz_n]
 create_clock -period 10.000 -name clk_100mhz [get_ports clk_100mhz_p]
 
 # E7 is not a global clock capable input, so need to set CLOCK_DEDICATED_ROUTE to satisfy DRC
-#set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets init_clk_ibuf_inst/O]
+# set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets init_clk_ibuf_inst/O]
 set_property CLOCK_DEDICATED_ROUTE ANY_CMT_COLUMN [get_nets clk_100mhz_ibufg]
 
 # DDR4 refclk1
@@ -33,7 +43,7 @@ set_property CLOCK_DEDICATED_ROUTE ANY_CMT_COLUMN [get_nets clk_100mhz_ibufg]
 #set_property -dict {LOC G28  IOSTANDARD DIFF_SSTL12} [get_ports clk_ddr4_refclk2_n]
 #create_clock -period 3.750 -name clk_ddr4_refclk2 [get_ports clk_ddr4_refclk1_p]
 
-# LEDs
+# LEDs: J11 H10 H11 G11 H13 G12 H14 G13
 set_property -dict {LOC J11 IOSTANDARD LVCMOS12 SLEW SLOW DRIVE 8} [get_ports led_sreg_d]
 set_property -dict {LOC H10 IOSTANDARD LVCMOS12 SLEW SLOW DRIVE 8} [get_ports led_sreg_ld]
 set_property -dict {LOC H11 IOSTANDARD LVCMOS12 SLEW SLOW DRIVE 8} [get_ports led_sreg_clk]
@@ -45,6 +55,47 @@ set_property -dict {LOC H14 IOSTANDARD LVCMOS12 SLEW SLOW DRIVE 8} [get_ports {l
 
 set_false_path -to [get_ports {led_sreg_d led_sreg_ld led_sreg_clk led_bmc[*] led_exp[*]}]
 set_output_delay 0 [get_ports {led_sreg_d led_sreg_ld led_sreg_clk led_bmc[*] led_exp[*]}]
+
+# DIP switches
+# set_property -dict {LOC AW9 IOSTANDARD LVCMOS12} [get_ports {sw[0]}]
+# set_property -dict {LOC AY9 IOSTANDARD LVCMOS12} [get_ports {sw[1]}]
+# set_property -dict {LOC BB9 IOSTANDARD LVCMOS12} [get_ports {sw[2]}]
+# set_property -dict {LOC BB8 IOSTANDARD LVCMOS12} [get_ports {sw[3]}]
+# set_false_path -from [get_ports {sw[*]}]
+# set_input_delay 0 [get_ports {sw[*]}]
+
+# GPIO
+# set_property -dict {LOC B4 IOSTANDARD LVCMOS33} [get_ports pps_in] ;# from SMA J6 via Q1 (inverted)
+# set_property -dict {LOC A4 IOSTANDARD LVCMOS33 SLEW FAST DRIVE 4} [get_ports pps_out] ;# to SMA J6 via U4 and U5, and u.FL J7 (PPS OUT) via U3
+# set_property -dict {LOC A3 IOSTANDARD LVCMOS33 SLEW SLOW DRIVE 4} [get_ports pps_out_en] ; # to U5 IN (connects pps_out to SMA J6 when high)
+# #set_property -dict {LOC H2 IOSTANDARD LVCMOS33} [get_ports misc_ucoax] ; from u.FL J5 (PPS IN)
+
+# set_false_path -to [get_ports {pps_out pps_out_en}]
+# set_output_delay 0 [get_ports {pps_out pps_out_en}]
+# set_false_path -from [get_ports {pps_in}]
+# set_input_delay 0 [get_ports {pps_in}]
+
+# # BMC interface
+# set_property -dict {LOC B6 IOSTANDARD LVCMOS18 SLEW SLOW DRIVE 4} [get_ports bmc_clk]
+# set_property -dict {LOC J4 IOSTANDARD LVCMOS18 SLEW SLOW DRIVE 4} [get_ports bmc_nss]
+# set_property -dict {LOC D5 IOSTANDARD LVCMOS18 SLEW SLOW DRIVE 4} [get_ports bmc_mosi]
+# set_property -dict {LOC D7 IOSTANDARD LVCMOS18} [get_ports bmc_miso]
+# set_property -dict {LOC H4 IOSTANDARD LVCMOS18} [get_ports bmc_int]
+
+# set_false_path -to [get_ports {bmc_clk bmc_nss bmc_mosi}]
+# set_output_delay 0 [get_ports {bmc_clk bmc_nss bmc_mosi}]
+# set_false_path -from [get_ports {bmc_miso bmc_int}]
+# set_input_delay 0 [get_ports {bmc_miso bmc_int}]
+
+# # Board status
+# #set_property -dict {LOC J2 IOSTANDARD LVCMOS33} [get_ports {fan_tacho[0]}]
+# #set_property -dict {LOC J3 IOSTANDARD LVCMOS33} [get_ports {fan_tacho[1]}]
+# set_property -dict {LOC A6 IOSTANDARD LVCMOS18} [get_ports {pg[0]}]
+# set_property -dict {LOC C7 IOSTANDARD LVCMOS18} [get_ports {pg[1]}]
+# #set_property -dict {LOC E2 IOSTANDARD LVCMOS33} [get_ports pwrbrk]
+
+# set_false_path -from [get_ports {pg[*]}]
+# set_input_delay 0 [get_ports {pg[*]}]
 
 # QSFP28 Interfaces
 set_property -dict {LOC H39 } [get_ports qsfp_0_rx_3_p] ;# MGTYRXP0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
