@@ -38,15 +38,19 @@ either expressed or implied, of The Regents of the University of California.
 `default_nettype none
 
 /*
- * FPGA core logic
+ * mqnic core logic - Xilinx UltraScale/UltraScale+ wrapper
  */
 module mqnic_core_pcie_us #
 (
     // FW and board IDs
-    parameter FW_ID = 32'd0,
-    parameter FW_VER = {16'd0, 16'd1},
-    parameter BOARD_ID = {16'h1234, 16'h0000},
-    parameter BOARD_VER = {16'd0, 16'd1},
+    parameter FPGA_ID = 32'hDEADBEEF,
+    parameter FW_ID = 32'h00000000,
+    parameter FW_VER = 32'h00_00_01_00,
+    parameter BOARD_ID = 16'h1234_0000,
+    parameter BOARD_VER = 32'h01_00_00_00,
+    parameter BUILD_DATE = 32'd602976000,
+    parameter GIT_HASH = 32'hdce357bf,
+    parameter RELEASE_INFO = 32'h00000000,
 
     // Structural configuration
     parameter IF_COUNT = 1,
@@ -150,6 +154,7 @@ module mqnic_core_pcie_us #
     parameter AXIL_IF_CTRL_ADDR_WIDTH = AXIL_CTRL_ADDR_WIDTH-$clog2(IF_COUNT),
     parameter AXIL_CSR_ADDR_WIDTH = AXIL_IF_CTRL_ADDR_WIDTH-5-$clog2((PORTS_PER_IF+3)/8),
     parameter AXIL_CSR_PASSTHROUGH_ENABLE = 0,
+    parameter RB_NEXT_PTR = 0,
 
     // AXI lite interface configuration (application control)
     parameter AXIL_APP_CTRL_DATA_WIDTH = AXIL_CTRL_DATA_WIDTH,
@@ -159,6 +164,7 @@ module mqnic_core_pcie_us #
     parameter AXIS_ETH_DATA_WIDTH = 512,
     parameter AXIS_ETH_KEEP_WIDTH = AXIS_ETH_DATA_WIDTH/8,
     parameter AXIS_ETH_SYNC_DATA_WIDTH = AXIS_ETH_DATA_WIDTH,
+    parameter AXIS_ETH_IF_DATA_WIDTH = AXIS_ETH_SYNC_DATA_WIDTH*2**$clog2(PORTS_PER_IF),
     parameter AXIS_ETH_TX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TAG_WIDTH : 0) + 1,
     parameter AXIS_ETH_RX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TS_WIDTH : 0) + 1,
     parameter AXIS_ETH_RX_USE_READY = 0,
@@ -649,10 +655,14 @@ pcie_if_inst (
 
 mqnic_core_pcie #(
     // FW and board IDs
+    .FPGA_ID(FPGA_ID),
     .FW_ID(FW_ID),
     .FW_VER(FW_VER),
     .BOARD_ID(BOARD_ID),
     .BOARD_VER(BOARD_VER),
+    .BUILD_DATE(BUILD_DATE),
+    .GIT_HASH(GIT_HASH),
+    .RELEASE_INFO(RELEASE_INFO),
 
     // Structural configuration
     .IF_COUNT(IF_COUNT),
@@ -758,6 +768,7 @@ mqnic_core_pcie #(
     .AXIL_IF_CTRL_ADDR_WIDTH(AXIL_IF_CTRL_ADDR_WIDTH),
     .AXIL_CSR_ADDR_WIDTH(AXIL_CSR_ADDR_WIDTH),
     .AXIL_CSR_PASSTHROUGH_ENABLE(AXIL_CSR_PASSTHROUGH_ENABLE),
+    .RB_NEXT_PTR(RB_NEXT_PTR),
 
     // AXI lite interface configuration (application control)
     .AXIL_APP_CTRL_DATA_WIDTH(AXIL_APP_CTRL_DATA_WIDTH),
@@ -767,6 +778,7 @@ mqnic_core_pcie #(
     .AXIS_DATA_WIDTH(AXIS_ETH_DATA_WIDTH),
     .AXIS_KEEP_WIDTH(AXIS_ETH_KEEP_WIDTH),
     .AXIS_SYNC_DATA_WIDTH(AXIS_ETH_SYNC_DATA_WIDTH),
+    .AXIS_IF_DATA_WIDTH(AXIS_ETH_IF_DATA_WIDTH),
     .AXIS_TX_USER_WIDTH(AXIS_ETH_TX_USER_WIDTH),
     .AXIS_RX_USER_WIDTH(AXIS_ETH_RX_USER_WIDTH),
     .AXIS_RX_USE_READY(AXIS_ETH_RX_USE_READY),

@@ -379,7 +379,7 @@ async def run_test_nic(dut):
     # enable queues
     tb.log.info("Enable queues")
     for interface in tb.driver.interfaces:
-        await interface.ports[0].hw_regs.write_dword(mqnic.MQNIC_PORT_REG_SCHED_ENABLE, 0x00000001)
+        await interface.ports[0].schedulers[0].rb.write_dword(mqnic.MQNIC_RB_SCHED_RR_REG_CTRL, 0x00000001)
         for k in range(interface.tx_queue_count):
             await interface.ports[0].schedulers[0].hw_regs.write_dword(4*k, 0x00000003)
 
@@ -513,7 +513,7 @@ async def run_test_nic(dut):
         tb.log.info("All interface 0 ports")
 
         for port in tb.driver.interfaces[0].ports:
-            await port.hw_regs.write_dword(mqnic.MQNIC_PORT_REG_SCHED_ENABLE, 0x00000001)
+            await port.schedulers[0].rb.write_dword(mqnic.MQNIC_RB_SCHED_RR_REG_CTRL, 0x00000001)
             for k in range(port.interface.tx_queue_count):
                 if k % len(tb.driver.interfaces[0].ports) == port.index:
                     await port.schedulers[0].hw_regs.write_dword(4*k, 0x00000003)
@@ -539,7 +539,7 @@ async def run_test_nic(dut):
         tb.loopback_enable = False
 
         for port in tb.driver.interfaces[0].ports[1:]:
-            await port.hw_regs.write_dword(mqnic.MQNIC_PORT_REG_SCHED_ENABLE, 0x00000000)
+            await port.schedulers[0].rb.write_dword(mqnic.MQNIC_RB_SCHED_RR_REG_CTRL, 0x00000000)
 
     tb.log.info("Read statistics counters")
 
@@ -594,7 +594,10 @@ def test_mqnic_core_pcie_us(request, if_count, ports_per_if, axis_pcie_data_widt
         os.path.join(rtl_dir, "common", "mqnic_core.v"),
         os.path.join(rtl_dir, "common", "mqnic_core_pcie.v"),
         os.path.join(rtl_dir, "common", "mqnic_interface.v"),
-        os.path.join(rtl_dir, "common", "mqnic_port.v"),
+        os.path.join(rtl_dir, "common", "mqnic_interface_tx.v"),
+        os.path.join(rtl_dir, "common", "mqnic_interface_rx.v"),
+        os.path.join(rtl_dir, "common", "mqnic_egress.v"),
+        os.path.join(rtl_dir, "common", "mqnic_ingress.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp_clock.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp_perout.v"),
@@ -605,6 +608,9 @@ def test_mqnic_core_pcie_us(request, if_count, ports_per_if, axis_pcie_data_widt
         os.path.join(rtl_dir, "common", "event_mux.v"),
         os.path.join(rtl_dir, "common", "queue_manager.v"),
         os.path.join(rtl_dir, "common", "cpl_queue_manager.v"),
+        os.path.join(rtl_dir, "common", "tx_fifo.v"),
+        os.path.join(rtl_dir, "common", "rx_fifo.v"),
+        os.path.join(rtl_dir, "common", "tx_req_mux.v"),
         os.path.join(rtl_dir, "common", "tx_engine.v"),
         os.path.join(rtl_dir, "common", "rx_engine.v"),
         os.path.join(rtl_dir, "common", "tx_checksum.v"),
@@ -639,7 +645,9 @@ def test_mqnic_core_pcie_us(request, if_count, ports_per_if, axis_pcie_data_widt
         os.path.join(axis_rtl_dir, "axis_arb_mux.v"),
         os.path.join(axis_rtl_dir, "axis_async_fifo.v"),
         os.path.join(axis_rtl_dir, "axis_async_fifo_adapter.v"),
+        os.path.join(axis_rtl_dir, "axis_demux.v"),
         os.path.join(axis_rtl_dir, "axis_fifo.v"),
+        os.path.join(axis_rtl_dir, "axis_fifo_adapter.v"),
         os.path.join(axis_rtl_dir, "axis_pipeline_fifo.v"),
         os.path.join(axis_rtl_dir, "axis_register.v"),
         os.path.join(pcie_rtl_dir, "pcie_axil_master.v"),

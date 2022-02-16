@@ -51,8 +51,9 @@ static void mqnic_get_drvinfo(struct net_device *ndev,
 	strscpy(drvinfo->driver, DRIVER_NAME, sizeof(drvinfo->driver));
 	strscpy(drvinfo->version, DRIVER_VERSION, sizeof(drvinfo->version));
 
-	snprintf(drvinfo->fw_version, sizeof(drvinfo->fw_version), "%d.%d",
-			mdev->fw_ver >> 16, mdev->fw_ver & 0xffff);
+	snprintf(drvinfo->fw_version, sizeof(drvinfo->fw_version), "%d.%d.%d.%d",
+			mdev->fw_ver >> 24, (mdev->fw_ver >> 16) & 0xff,
+			(mdev->fw_ver >> 8) & 0xff, mdev->fw_ver & 0xff);
 	strscpy(drvinfo->bus_info, dev_name(mdev->dev), sizeof(drvinfo->bus_info));
 }
 
@@ -67,7 +68,7 @@ static int mqnic_get_ts_info(struct net_device *ndev,
 	if (mdev->ptp_clock)
 		info->phc_index = ptp_clock_index(mdev->ptp_clock);
 
-	if (!(priv->if_features & MQNIC_IF_FEATURE_PTP_TS) || !mdev->ptp_clock)
+	if (!(priv->if_tx_features & MQNIC_IF_TX_FEATURE_PTP_TS) || !mdev->ptp_clock)
 		return 0;
 
 	info->so_timestamping |= SOF_TIMESTAMPING_TX_HARDWARE |
