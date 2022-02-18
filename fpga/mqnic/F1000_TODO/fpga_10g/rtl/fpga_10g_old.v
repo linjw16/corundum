@@ -43,14 +43,11 @@ either expressed or implied, of The Regents of the University of California.
 module fpga #
 (
     // FW and board IDs
+    parameter FW_ID = 32'd0,
+    parameter FW_VER = {16'd0, 16'd1},
+    parameter BOARD_ID = {16'h1c2c, 16'ha00e},
+    parameter BOARD_VER = {16'd0, 16'd1},
     parameter FPGA_ID = 32'h4A56093,
-    parameter FW_ID = 32'h00000000,
-    parameter FW_VER = 32'h00_00_01_00,
-    parameter BOARD_ID = 32'h1c2c_a00e,
-    parameter BOARD_VER = 32'h01_00_00_00,
-    parameter BUILD_DATE = 32'd602976000,
-    parameter GIT_HASH = 32'hdce357bf,
-    parameter RELEASE_INFO = 32'h00000000,
 
     // Structural configuration
     parameter IF_COUNT = 2,
@@ -266,8 +263,8 @@ parameter PTP_FNS_WIDTH = 32;
 parameter PTP_PERIOD_NS = 4'd4;
 parameter PTP_PERIOD_FNS = 32'd0;
 parameter PTP_USE_SAMPLE_CLOCK = 0;
-parameter IF_PTP_PERIOD_NS = 6'h6;        // linjw: 10G: 6'h6,         25G: 6'h2
-parameter IF_PTP_PERIOD_FNS = 16'h6666;    // linjw: 10G: 16'h6666,     25G: 16'h8F5C
+parameter IF_PTP_PERIOD_NS = 6'h6;
+parameter IF_PTP_PERIOD_FNS = 16'h6666;
 
 // PCIe interface configuration
 parameter MSI_COUNT = 32;
@@ -277,7 +274,7 @@ parameter XGMII_DATA_WIDTH = 64;
 parameter XGMII_CTRL_WIDTH = XGMII_DATA_WIDTH/8;
 parameter AXIS_ETH_DATA_WIDTH = XGMII_DATA_WIDTH;
 parameter AXIS_ETH_KEEP_WIDTH = AXIS_ETH_DATA_WIDTH/8;
-parameter AXIS_ETH_SYNC_DATA_WIDTH = AXIS_ETH_DATA_WIDTH;    // linjw: 10G: *1, 25G: *2
+parameter AXIS_ETH_SYNC_DATA_WIDTH = AXIS_ETH_DATA_WIDTH;
 parameter AXIS_ETH_TX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TAG_WIDTH : 0) + 1;
 parameter AXIS_ETH_RX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TS_WIDTH : 0) + 1;
 
@@ -285,16 +282,12 @@ parameter AXIS_ETH_RX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TS_WIDTH : 0) + 1;
 wire pcie_user_clk;
 wire pcie_user_reset;
 
-// wire init_clk_bufg;
+wire init_clk_bufg;
 
 // Internal 125 MHz clock
 wire clk_125mhz_mmcm_out;
 wire clk_125mhz_int;
 wire rst_125mhz_int;
-
-// Internal 156.25 MHz clock
-// wire clk_156mhz_int;
-// wire rst_156mhz_int;
 
 wire mmcm_rst = pcie_user_reset;// || !pg[0] || !pg[1];
 wire mmcm_locked;
@@ -1513,14 +1506,11 @@ assign led_green[7] = qsfp_1_rx_block_lock_3;
 
 fpga_core #(
     // FW and board IDs
-    .FPGA_ID(FPGA_ID),
     .FW_ID(FW_ID),
     .FW_VER(FW_VER),
     .BOARD_ID(BOARD_ID),
     .BOARD_VER(BOARD_VER),
-    .BUILD_DATE(BUILD_DATE),
-    .GIT_HASH(GIT_HASH),
-    .RELEASE_INFO(RELEASE_INFO),
+    .FPGA_ID(FPGA_ID),
 
     // Structural configuration
     .IF_COUNT(IF_COUNT),

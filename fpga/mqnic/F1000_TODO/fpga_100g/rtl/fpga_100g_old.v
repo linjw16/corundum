@@ -33,9 +33,7 @@ either expressed or implied, of The Regents of the University of California.
 
 // Language: Verilog 2001
 
-`resetall
 `timescale 1ns / 1ps
-`default_nettype none
 
 /*
  * FPGA top-level module
@@ -43,14 +41,11 @@ either expressed or implied, of The Regents of the University of California.
 module fpga #
 (
     // FW and board IDs
+    parameter FW_ID = 32'd0,
+    parameter FW_VER = {16'd0, 16'd1},
+    parameter BOARD_ID = {16'h1c2c, 16'ha00e},
+    parameter BOARD_VER = {16'd0, 16'd1},
     parameter FPGA_ID = 32'h4A56093,
-    parameter FW_ID = 32'h00000000,
-    parameter FW_VER = 32'h00_00_01_00,
-    parameter BOARD_ID = 32'h1c2c_a00e,
-    parameter BOARD_VER = 32'h01_00_00_00,
-    parameter BUILD_DATE = 32'd602976000,
-    parameter GIT_HASH = 32'hdce357bf,
-    parameter RELEASE_INFO = 32'h00000000,
 
     // Structural configuration
     parameter IF_COUNT = 2,
@@ -243,7 +238,6 @@ parameter PTP_FNS_WIDTH = 32;
 parameter PTP_PERIOD_NS = 4'd4;
 parameter PTP_PERIOD_FNS = 32'd0;
 parameter PTP_USE_SAMPLE_CLOCK = 0;
-parameter PTP_SEPARATE_RX_CLOCK = 1;
 
 // PCIe interface configuration
 parameter MSI_COUNT = 32;
@@ -422,19 +416,21 @@ always @(posedge pcie_user_clk) begin
 end
 
 sync_signal #(
-	.WIDTH(2),
-	.N(2)
+    .WIDTH(8),
+    .N(2)
 )
 sync_signal_inst (
-	.clk(pcie_user_clk),
-	.in({qsfp_0_mod_prsnt_n, qsfp_0_intr_n}),
-	.out({qsfp_0_mod_prsnt_n_int, qsfp_0_intr_n_int})
+    .clk(pcie_user_clk),
+    .in({qsfp_0_mod_prsnt_n, qsfp_0_intr_n, qsfp_0_i2c_scl, qsfp_0_i2c_sda,
+        qsfp_1_mod_prsnt_n, qsfp_1_intr_n, qsfp_1_i2c_scl, qsfp_1_i2c_sda}),
+    .out({qsfp_0_mod_prsnt_n_int, qsfp_0_intr_n_int, qsfp_0_i2c_scl_i, qsfp_0_i2c_sda_i,
+        qsfp_1_mod_prsnt_n_int, qsfp_1_intr_n_int, qsfp_1_i2c_scl_i, qsfp_1_i2c_sda_i})
 );
 
-// assign qsfp_0_i2c_scl = qsfp_0_i2c_scl_t_reg ? 1'bz : qsfp_0_i2c_scl_o_reg;
-// assign qsfp_0_i2c_sda = qsfp_0_i2c_sda_t_reg ? 1'bz : qsfp_0_i2c_sda_o_reg;
-// assign qsfp_1_i2c_scl = qsfp_1_i2c_scl_t_reg ? 1'bz : qsfp_1_i2c_scl_o_reg;
-// assign qsfp_1_i2c_sda = qsfp_1_i2c_sda_t_reg ? 1'bz : qsfp_1_i2c_sda_o_reg;
+assign qsfp_0_i2c_scl = qsfp_0_i2c_scl_t_reg ? 1'bz : qsfp_0_i2c_scl_o_reg;
+assign qsfp_0_i2c_sda = qsfp_0_i2c_sda_t_reg ? 1'bz : qsfp_0_i2c_sda_o_reg;
+assign qsfp_1_i2c_scl = qsfp_1_i2c_scl_t_reg ? 1'bz : qsfp_1_i2c_scl_o_reg;
+assign qsfp_1_i2c_sda = qsfp_1_i2c_sda_t_reg ? 1'bz : qsfp_1_i2c_sda_o_reg;
 
 wire [7:0] led_red;
 wire [7:0] led_green;
@@ -967,8 +963,6 @@ wire                           qsfp_0_rx_axis_tvalid_int;
 wire                           qsfp_0_rx_axis_tlast_int;
 wire [80+1-1:0]                qsfp_0_rx_axis_tuser_int;
 
-wire                           qsfp_0_rx_ptp_clk_int;
-wire                           qsfp_0_rx_ptp_rst_int;
 wire [79:0]                    qsfp_0_rx_ptp_time_int;
 
 wire                           qsfp_1_tx_clk_int;
@@ -1002,44 +996,20 @@ wire                           qsfp_1_rx_axis_tvalid_int;
 wire                           qsfp_1_rx_axis_tlast_int;
 wire [80+1-1:0]                qsfp_1_rx_axis_tuser_int;
 
-wire                           qsfp_1_rx_ptp_clk_int;
-wire                           qsfp_1_rx_ptp_rst_int;
 wire [79:0]                    qsfp_1_rx_ptp_time_int;
 
 wire qsfp_0_rx_status;
 wire qsfp_1_rx_status;
 
 wire qsfp_0_txuserclk2;
-wire qsfp_0_rxuserclk2;
 
 assign qsfp_0_tx_clk_int = qsfp_0_txuserclk2;
 assign qsfp_0_rx_clk_int = qsfp_0_txuserclk2;
-assign qsfp_0_rx_ptp_clk_int = qsfp_0_rxuserclk2;
 
 wire qsfp_1_txuserclk2;
-wire qsfp_1_rxuserclk2;
 
 assign qsfp_1_tx_clk_int = qsfp_1_txuserclk2;
 assign qsfp_1_rx_clk_int = qsfp_1_txuserclk2;
-assign qsfp_1_rx_ptp_clk_int = qsfp_1_rxuserclk2;
-
-sync_reset #(
-    .N(4)
-)
-sync_reset_qsfp_0_rx_ptp_rst_inst (
-    .clk(qsfp_0_rx_ptp_clk_int),
-    .rst(qsfp_0_tx_rst_int),
-    .out(qsfp_0_rx_ptp_rst_int)
-);
-
-sync_reset #(
-    .N(4)
-)
-sync_reset_qsfp_1_rx_ptp_rst_inst (
-    .clk(qsfp_1_rx_ptp_clk_int),
-    .rst(qsfp_1_tx_rst_int),
-    .out(qsfp_1_rx_ptp_rst_int)
-);
 
 cmac_pad #(
     .DATA_WIDTH(AXIS_ETH_DATA_WIDTH),
@@ -1104,7 +1074,7 @@ qsfp_0_cmac_inst (
     .rx_otn_vlmarker(), // output
     .rx_preambleout(), // output [55:0]
     .usr_rx_reset(qsfp_0_rx_rst_int), // output
-    .gt_rxusrclk2(qsfp_0_rxuserclk2), // output
+    .gt_rxusrclk2(), // output
 
     .rx_lane_aligner_fill_0(), // output [6:0]
     .rx_lane_aligner_fill_1(), // output [6:0]
@@ -1128,9 +1098,8 @@ qsfp_0_cmac_inst (
     .rx_lane_aligner_fill_9(), // output [6:0]
     .rx_ptp_tstamp_out(qsfp_0_rx_axis_tuser_int[80:1]), // output [79:0]
     .rx_ptp_pcslane_out(), // output [4:0]
-    // // RX fed from TX clock, so use same PTP time source
-    // .ctl_rx_systemtimerin(qsfp_0_tx_ptp_time_int), // input [79:0]
-    .ctl_rx_systemtimerin(qsfp_0_rx_ptp_time_int), // input [79:0]
+    // RX fed from TX clock, so use same PTP time source
+    .ctl_rx_systemtimerin(qsfp_0_tx_ptp_time_int), // input [79:0]
 
     .stat_rx_aligned(), // output
     .stat_rx_aligned_err(), // output
@@ -1426,7 +1395,7 @@ qsfp_1_cmac_inst (
     .rx_otn_vlmarker(), // output
     .rx_preambleout(), // output [55:0]
     .usr_rx_reset(qsfp_1_rx_rst_int), // output
-    .gt_rxusrclk2(qsfp_1_rxuserclk2), // output
+    .gt_rxusrclk2(), // output
 
     .rx_lane_aligner_fill_0(), // output [6:0]
     .rx_lane_aligner_fill_1(), // output [6:0]
@@ -1450,9 +1419,8 @@ qsfp_1_cmac_inst (
     .rx_lane_aligner_fill_9(), // output [6:0]
     .rx_ptp_tstamp_out(qsfp_1_rx_axis_tuser_int[80:1]), // output [79:0]
     .rx_ptp_pcslane_out(), // output [4:0]
-    // // RX fed from TX clock, so use same PTP time source
-    // .ctl_rx_systemtimerin(qsfp_1_tx_ptp_time_int), // input [79:0]
-    .ctl_rx_systemtimerin(qsfp_1_rx_ptp_time_int), // input [79:0]
+    // RX fed from TX clock, so use same PTP time source
+    .ctl_rx_systemtimerin(qsfp_1_tx_ptp_time_int), // input [79:0]
 
     .stat_rx_aligned(), // output
     .stat_rx_aligned_err(), // output
@@ -1692,14 +1660,11 @@ assign led_green[7:5] = 0;
 
 fpga_core #(
     // FW and board IDs
-    .FPGA_ID(FPGA_ID),
     .FW_ID(FW_ID),
     .FW_VER(FW_VER),
     .BOARD_ID(BOARD_ID),
     .BOARD_VER(BOARD_VER),
-    .BUILD_DATE(BUILD_DATE),
-    .GIT_HASH(GIT_HASH),
-    .RELEASE_INFO(RELEASE_INFO),
+    .FPGA_ID(FPGA_ID),
 
     // Structural configuration
     .IF_COUNT(IF_COUNT),
@@ -1714,7 +1679,6 @@ fpga_core #(
     .PTP_PERIOD_NS(PTP_PERIOD_NS),
     .PTP_PERIOD_FNS(PTP_PERIOD_FNS),
     .PTP_USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK),
-    .PTP_SEPARATE_RX_CLOCK(PTP_SEPARATE_RX_CLOCK),
     .PTP_PEROUT_ENABLE(PTP_PEROUT_ENABLE),
     .PTP_PEROUT_COUNT(PTP_PEROUT_COUNT),
 
@@ -1950,8 +1914,6 @@ core_inst (
     .qsfp_0_rx_axis_tvalid(qsfp_0_rx_axis_tvalid_int),
     .qsfp_0_rx_axis_tlast(qsfp_0_rx_axis_tlast_int),
     .qsfp_0_rx_axis_tuser(qsfp_0_rx_axis_tuser_int),
-    .qsfp_0_rx_ptp_clk(qsfp_0_rx_ptp_clk_int),
-    .qsfp_0_rx_ptp_rst(qsfp_0_rx_ptp_rst_int),
     .qsfp_0_rx_ptp_time(qsfp_0_rx_ptp_time_int),
     .qsfp_0_mod_prsnt_n(qsfp_0_mod_prsnt_n_int),
     .qsfp_0_reset_n(qsfp_0_reset_n),
@@ -1982,8 +1944,6 @@ core_inst (
     .qsfp_1_rx_axis_tvalid(qsfp_1_rx_axis_tvalid_int),
     .qsfp_1_rx_axis_tlast(qsfp_1_rx_axis_tlast_int),
     .qsfp_1_rx_axis_tuser(qsfp_1_rx_axis_tuser_int),
-    .qsfp_1_rx_ptp_clk(qsfp_1_rx_ptp_clk_int),
-    .qsfp_1_rx_ptp_rst(qsfp_1_rx_ptp_rst_int),
     .qsfp_1_rx_ptp_time(qsfp_1_rx_ptp_time_int),
     .qsfp_1_mod_prsnt_n(qsfp_1_mod_prsnt_n_int),
     .qsfp_1_reset_n(qsfp_1_reset_n),
@@ -2008,5 +1968,3 @@ core_inst (
 );
 
 endmodule
-
-`resetall

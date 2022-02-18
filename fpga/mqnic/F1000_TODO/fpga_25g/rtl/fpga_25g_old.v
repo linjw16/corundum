@@ -43,14 +43,11 @@ either expressed or implied, of The Regents of the University of California.
 module fpga #
 (
     // FW and board IDs
+    parameter FW_ID = 32'd0,
+    parameter FW_VER = {16'd0, 16'd1},
+    parameter BOARD_ID = {16'h1c2c, 16'ha00e},
+    parameter BOARD_VER = {16'd0, 16'd1},
     parameter FPGA_ID = 32'h4A56093,
-    parameter FW_ID = 32'h00000000,
-    parameter FW_VER = 32'h00_00_01_00,
-    parameter BOARD_ID = 32'h1c2c_a00e,
-    parameter BOARD_VER = 32'h01_00_00_00,
-    parameter BUILD_DATE = 32'd602976000,
-    parameter GIT_HASH = 32'hdce357bf,
-    parameter RELEASE_INFO = 32'h00000000,
 
     // Structural configuration
     parameter IF_COUNT = 2,
@@ -160,7 +157,6 @@ module fpga #
     /*
      * Clock: 100MHz
      */
-    // input  wire         init_clk,
     input  wire         clk_100mhz_p,
     input  wire         clk_100mhz_n,
 
@@ -266,8 +262,8 @@ parameter PTP_FNS_WIDTH = 32;
 parameter PTP_PERIOD_NS = 4'd4;
 parameter PTP_PERIOD_FNS = 32'd0;
 parameter PTP_USE_SAMPLE_CLOCK = 0;
-parameter IF_PTP_PERIOD_NS = 6'h6;        // linjw: 10G: 6'h6,         25G: 6'h2
-parameter IF_PTP_PERIOD_FNS = 16'h6666;    // linjw: 10G: 16'h6666,     25G: 16'h8F5C
+parameter IF_PTP_PERIOD_NS = 6'h2;
+parameter IF_PTP_PERIOD_FNS = 16'h8F5C;
 
 // PCIe interface configuration
 parameter MSI_COUNT = 32;
@@ -277,7 +273,7 @@ parameter XGMII_DATA_WIDTH = 64;
 parameter XGMII_CTRL_WIDTH = XGMII_DATA_WIDTH/8;
 parameter AXIS_ETH_DATA_WIDTH = XGMII_DATA_WIDTH;
 parameter AXIS_ETH_KEEP_WIDTH = AXIS_ETH_DATA_WIDTH/8;
-parameter AXIS_ETH_SYNC_DATA_WIDTH = AXIS_ETH_DATA_WIDTH;    // linjw: 10G: *1, 25G: *2
+parameter AXIS_ETH_SYNC_DATA_WIDTH = AXIS_ETH_DATA_WIDTH*2;
 parameter AXIS_ETH_TX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TAG_WIDTH : 0) + 1;
 parameter AXIS_ETH_RX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TS_WIDTH : 0) + 1;
 
@@ -293,12 +289,13 @@ wire clk_125mhz_int;
 wire rst_125mhz_int;
 
 // Internal 156.25 MHz clock
-// wire clk_156mhz_int;
-// wire rst_156mhz_int;
+wire clk_156mhz_int;
+wire rst_156mhz_int;
 
 wire mmcm_rst = pcie_user_reset;// || !pg[0] || !pg[1];
 wire mmcm_locked;
 wire mmcm_clkfb;
+
 
 wire clk_100mhz_ibufg;
 IBUFGDS #(
@@ -319,7 +316,7 @@ IBUFGDS_inst (
 // Divide by 8 to get output frequency of 125 MHz
 MMCME3_BASE #(
     .BANDWIDTH("OPTIMIZED"),
-    .CLKOUT0_DIVIDE_F(8),
+    .CLKOUT0_DIVIDE_F(10),
     .CLKOUT0_DUTY_CYCLE(0.5),
     .CLKOUT0_PHASE(0),
     .CLKOUT1_DIVIDE(1),
@@ -422,15 +419,17 @@ wire qsfp_1_intr_n_int;
 //     qsfp_1_i2c_sda_t_reg <= qsfp_1_i2c_sda_t;
 // end
 
-sync_signal #(
-    .WIDTH(2),
-    .N(2)
-)
-sync_signal_inst (
-    .clk(pcie_user_clk),
-    .in({qsfp_0_mod_prsnt_n, qsfp_0_intr_n}),
-    .out({qsfp_0_mod_prsnt_n_int, qsfp_0_intr_n_int})
-);
+// sync_signal #(
+//     .WIDTH(8),
+//     .N(2)
+// )
+// sync_signal_inst (
+//     .clk(pcie_user_clk),
+//     .in({qsfp_0_mod_prsnt_n, qsfp_0_intr_n, qsfp_0_i2c_scl, qsfp_0_i2c_sda,
+//         qsfp_1_mod_prsnt_n, qsfp_1_intr_n, qsfp_1_i2c_scl, qsfp_1_i2c_sda}),
+//     .out({qsfp_0_mod_prsnt_n_int, qsfp_0_intr_n_int, qsfp_0_i2c_scl_i, qsfp_0_i2c_sda_i,
+//         qsfp_1_mod_prsnt_n_int, qsfp_1_intr_n_int, qsfp_1_i2c_scl_i, qsfp_1_i2c_sda_i})
+// );
 
 // assign qsfp_0_i2c_scl = qsfp_0_i2c_scl_t_reg ? 1'bz : qsfp_0_i2c_scl_o_reg;
 // assign qsfp_0_i2c_sda = qsfp_0_i2c_sda_t_reg ? 1'bz : qsfp_0_i2c_sda_o_reg;
@@ -1030,7 +1029,10 @@ wire qsfp_0_qpll0outrefclk;
 
 eth_xcvr_phy_wrapper #(
     .HAS_COMMON(1),
-    .PRBS31_ENABLE(1)
+    .PRBS31_ENABLE(1),
+    .TX_SERDES_PIPELINE(1),
+    .RX_SERDES_PIPELINE(1),
+    .COUNT_125US(125000/2.56)
 )
 qsfp_0_phy_0_inst (
     .xcvr_ctrl_clk(clk_125mhz_int),
@@ -1078,7 +1080,10 @@ qsfp_0_phy_0_inst (
 
 eth_xcvr_phy_wrapper #(
     .HAS_COMMON(0),
-    .PRBS31_ENABLE(1)
+    .PRBS31_ENABLE(1),
+    .TX_SERDES_PIPELINE(1),
+    .RX_SERDES_PIPELINE(1),
+    .COUNT_125US(125000/2.56)
 )
 qsfp_0_phy_1_inst (
     .xcvr_ctrl_clk(clk_125mhz_int),
@@ -1126,7 +1131,10 @@ qsfp_0_phy_1_inst (
 
 eth_xcvr_phy_wrapper #(
     .HAS_COMMON(0),
-    .PRBS31_ENABLE(1)
+    .PRBS31_ENABLE(1),
+    .TX_SERDES_PIPELINE(1),
+    .RX_SERDES_PIPELINE(1),
+    .COUNT_125US(125000/2.56)
 )
 qsfp_0_phy_2_inst (
     .xcvr_ctrl_clk(clk_125mhz_int),
@@ -1174,7 +1182,10 @@ qsfp_0_phy_2_inst (
 
 eth_xcvr_phy_wrapper #(
     .HAS_COMMON(0),
-    .PRBS31_ENABLE(1)
+    .PRBS31_ENABLE(1),
+    .TX_SERDES_PIPELINE(1),
+    .RX_SERDES_PIPELINE(1),
+    .COUNT_125US(125000/2.56)
 )
 qsfp_0_phy_3_inst (
     .xcvr_ctrl_clk(clk_125mhz_int),
@@ -1312,7 +1323,10 @@ wire qsfp_1_qpll0outrefclk;
 
 eth_xcvr_phy_wrapper #(
     .HAS_COMMON(1),
-    .PRBS31_ENABLE(1)
+    .PRBS31_ENABLE(1),
+    .TX_SERDES_PIPELINE(1),
+    .RX_SERDES_PIPELINE(1),
+    .COUNT_125US(125000/2.56)
 )
 qsfp_1_phy_0_inst (
     .xcvr_ctrl_clk(clk_125mhz_int),
@@ -1360,7 +1374,10 @@ qsfp_1_phy_0_inst (
 
 eth_xcvr_phy_wrapper #(
     .HAS_COMMON(0),
-    .PRBS31_ENABLE(1)
+    .PRBS31_ENABLE(1),
+    .TX_SERDES_PIPELINE(1),
+    .RX_SERDES_PIPELINE(1),
+    .COUNT_125US(125000/2.56)
 )
 qsfp_1_phy_1_inst (
     .xcvr_ctrl_clk(clk_125mhz_int),
@@ -1408,7 +1425,10 @@ qsfp_1_phy_1_inst (
 
 eth_xcvr_phy_wrapper #(
     .HAS_COMMON(0),
-    .PRBS31_ENABLE(1)
+    .PRBS31_ENABLE(1),
+    .TX_SERDES_PIPELINE(1),
+    .RX_SERDES_PIPELINE(1),
+    .COUNT_125US(125000/2.56)
 )
 qsfp_1_phy_2_inst (
     .xcvr_ctrl_clk(clk_125mhz_int),
@@ -1456,7 +1476,10 @@ qsfp_1_phy_2_inst (
 
 eth_xcvr_phy_wrapper #(
     .HAS_COMMON(0),
-    .PRBS31_ENABLE(1)
+    .PRBS31_ENABLE(1),
+    .TX_SERDES_PIPELINE(1),
+    .RX_SERDES_PIPELINE(1),
+    .COUNT_125US(125000/2.56)
 )
 qsfp_1_phy_3_inst (
     .xcvr_ctrl_clk(clk_125mhz_int),
@@ -1513,14 +1536,11 @@ assign led_green[7] = qsfp_1_rx_block_lock_3;
 
 fpga_core #(
     // FW and board IDs
-    .FPGA_ID(FPGA_ID),
     .FW_ID(FW_ID),
     .FW_VER(FW_VER),
     .BOARD_ID(BOARD_ID),
     .BOARD_VER(BOARD_VER),
-    .BUILD_DATE(BUILD_DATE),
-    .GIT_HASH(GIT_HASH),
-    .RELEASE_INFO(RELEASE_INFO),
+    .FPGA_ID(FPGA_ID),
 
     // Structural configuration
     .IF_COUNT(IF_COUNT),

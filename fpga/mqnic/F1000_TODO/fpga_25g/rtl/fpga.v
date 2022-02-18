@@ -43,115 +43,118 @@ either expressed or implied, of The Regents of the University of California.
 module fpga #
 (
 	// FW and board IDs
-	parameter FW_ID = 32'd0,
-	parameter FW_VER = {16'd0, 16'd1},
-	parameter BOARD_ID = {16'h1c2c, 16'ha00e},
-	parameter BOARD_VER = {16'd0, 16'd1},
-	parameter FPGA_ID = 32'h4A56093,
+    parameter FPGA_ID = 32'h4A56093,
+    parameter FW_ID = 32'h00000000,
+    parameter FW_VER = 32'h00_00_01_00,
+    parameter BOARD_ID = 32'h1c2c_a00e,
+    parameter BOARD_VER = 32'h01_00_00_00,
+    parameter BUILD_DATE = 32'd602976000,
+    parameter GIT_HASH = 32'hdce357bf,
+    parameter RELEASE_INFO = 32'h00000000,
 
-	// Structural configuration
-	parameter IF_COUNT = 2,
-	parameter PORTS_PER_IF = 1,
+    // Structural configuration
+    parameter IF_COUNT = 2,
+    parameter PORTS_PER_IF = 1,
 
-	// PTP configuration
-	parameter PTP_PEROUT_ENABLE = 1,
-	parameter PTP_PEROUT_COUNT = 1,
+    // PTP configuration
+    parameter PTP_PEROUT_ENABLE = 1,
+    parameter PTP_PEROUT_COUNT = 1,
 
-	// Queue manager configuration (interface)
-	parameter EVENT_QUEUE_OP_TABLE_SIZE = 32,
-	parameter TX_QUEUE_OP_TABLE_SIZE = 32,
-	parameter RX_QUEUE_OP_TABLE_SIZE = 32,
-	parameter TX_CPL_QUEUE_OP_TABLE_SIZE = TX_QUEUE_OP_TABLE_SIZE,
-	parameter RX_CPL_QUEUE_OP_TABLE_SIZE = RX_QUEUE_OP_TABLE_SIZE,
-	parameter TX_QUEUE_INDEX_WIDTH = 13,
-	parameter RX_QUEUE_INDEX_WIDTH = 8,
-	parameter TX_CPL_QUEUE_INDEX_WIDTH = TX_QUEUE_INDEX_WIDTH,
-	parameter RX_CPL_QUEUE_INDEX_WIDTH = RX_QUEUE_INDEX_WIDTH,
-	parameter EVENT_QUEUE_PIPELINE = 3,
-	parameter TX_QUEUE_PIPELINE = 3+(TX_QUEUE_INDEX_WIDTH > 12 ? TX_QUEUE_INDEX_WIDTH-12 : 0),
-	parameter RX_QUEUE_PIPELINE = 3+(RX_QUEUE_INDEX_WIDTH > 12 ? RX_QUEUE_INDEX_WIDTH-12 : 0),
-	parameter TX_CPL_QUEUE_PIPELINE = TX_QUEUE_PIPELINE,
-	parameter RX_CPL_QUEUE_PIPELINE = RX_QUEUE_PIPELINE,
+    // Queue manager configuration (interface)
+    parameter EVENT_QUEUE_OP_TABLE_SIZE = 32,
+    parameter TX_QUEUE_OP_TABLE_SIZE = 32,
+    parameter RX_QUEUE_OP_TABLE_SIZE = 32,
+    parameter TX_CPL_QUEUE_OP_TABLE_SIZE = TX_QUEUE_OP_TABLE_SIZE,
+    parameter RX_CPL_QUEUE_OP_TABLE_SIZE = RX_QUEUE_OP_TABLE_SIZE,
+    parameter TX_QUEUE_INDEX_WIDTH = 13,
+    parameter RX_QUEUE_INDEX_WIDTH = 8,
+    parameter TX_CPL_QUEUE_INDEX_WIDTH = TX_QUEUE_INDEX_WIDTH,
+    parameter RX_CPL_QUEUE_INDEX_WIDTH = RX_QUEUE_INDEX_WIDTH,
+    parameter EVENT_QUEUE_PIPELINE = 3,
+    parameter TX_QUEUE_PIPELINE = 3+(TX_QUEUE_INDEX_WIDTH > 12 ? TX_QUEUE_INDEX_WIDTH-12 : 0),
+    parameter RX_QUEUE_PIPELINE = 3+(RX_QUEUE_INDEX_WIDTH > 12 ? RX_QUEUE_INDEX_WIDTH-12 : 0),
+    parameter TX_CPL_QUEUE_PIPELINE = TX_QUEUE_PIPELINE,
+    parameter RX_CPL_QUEUE_PIPELINE = RX_QUEUE_PIPELINE,
 
-	// TX and RX engine configuration (port)
-	parameter TX_DESC_TABLE_SIZE = 32,
-	parameter RX_DESC_TABLE_SIZE = 32,
+    // TX and RX engine configuration (port)
+    parameter TX_DESC_TABLE_SIZE = 32,
+    parameter RX_DESC_TABLE_SIZE = 32,
 
-	// Scheduler configuration (port)
-	parameter TX_SCHEDULER_OP_TABLE_SIZE = TX_DESC_TABLE_SIZE,
-	parameter TX_SCHEDULER_PIPELINE = TX_QUEUE_PIPELINE,
-	parameter TDMA_INDEX_WIDTH = 6,
+    // Scheduler configuration (port)
+    parameter TX_SCHEDULER_OP_TABLE_SIZE = TX_DESC_TABLE_SIZE,
+    parameter TX_SCHEDULER_PIPELINE = TX_QUEUE_PIPELINE,
+    parameter TDMA_INDEX_WIDTH = 6,
 
-	// Timestamping configuration (port)
-	parameter PTP_TS_ENABLE = 1,
-	parameter TX_PTP_TS_FIFO_DEPTH = 32,
-	parameter RX_PTP_TS_FIFO_DEPTH = 32,
+    // Timestamping configuration (port)
+    parameter PTP_TS_ENABLE = 1,
+    parameter TX_PTP_TS_FIFO_DEPTH = 32,
+    parameter RX_PTP_TS_FIFO_DEPTH = 32,
 
-	// Interface configuration (port)
-	parameter TX_CHECKSUM_ENABLE = 1,
-	parameter RX_RSS_ENABLE = 1,
-	parameter RX_HASH_ENABLE = 1,
-	parameter RX_CHECKSUM_ENABLE = 1,
-	parameter TX_FIFO_DEPTH = 32768,
-	parameter RX_FIFO_DEPTH = 32768,
-	parameter MAX_TX_SIZE = 9214,
-	parameter MAX_RX_SIZE = 9214,
-	parameter TX_RAM_SIZE = 32768,
-	parameter RX_RAM_SIZE = 32768,
+    // Interface configuration (port)
+    parameter TX_CHECKSUM_ENABLE = 1,
+    parameter RX_RSS_ENABLE = 1,
+    parameter RX_HASH_ENABLE = 1,
+    parameter RX_CHECKSUM_ENABLE = 1,
+    parameter TX_FIFO_DEPTH = 32768,
+    parameter RX_FIFO_DEPTH = 32768,
+    parameter MAX_TX_SIZE = 9214,
+    parameter MAX_RX_SIZE = 9214,
+    parameter TX_RAM_SIZE = 32768,
+    parameter RX_RAM_SIZE = 32768,
 
-	// Application block configuration
-	parameter APP_ENABLE = 0,
-	parameter APP_CTRL_ENABLE = 1,
-	parameter APP_DMA_ENABLE = 1,
-	parameter APP_AXIS_DIRECT_ENABLE = 1,
-	parameter APP_AXIS_SYNC_ENABLE = 1,
-	parameter APP_AXIS_IF_ENABLE = 1,
-	parameter APP_STAT_ENABLE = 1,
+    // Application block configuration
+    parameter APP_ENABLE = 0,
+    parameter APP_CTRL_ENABLE = 1,
+    parameter APP_DMA_ENABLE = 1,
+    parameter APP_AXIS_DIRECT_ENABLE = 1,
+    parameter APP_AXIS_SYNC_ENABLE = 1,
+    parameter APP_AXIS_IF_ENABLE = 1,
+    parameter APP_STAT_ENABLE = 1,
 
-	// DMA interface configuration
-	parameter DMA_LEN_WIDTH = 16,
-	parameter DMA_TAG_WIDTH = 16,
-	parameter RAM_PIPELINE = 2,
+    // DMA interface configuration
+    parameter DMA_LEN_WIDTH = 16,
+    parameter DMA_TAG_WIDTH = 16,
+    parameter RAM_PIPELINE = 2,
 
-	// PCIe interface configuration
-	parameter AXIS_PCIE_DATA_WIDTH = 512,
-	parameter AXIS_PCIE_KEEP_WIDTH = (AXIS_PCIE_DATA_WIDTH/32),
-	parameter AXIS_PCIE_RC_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 75 : 161,
-	parameter AXIS_PCIE_RQ_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 62 : 137,
-	parameter AXIS_PCIE_CQ_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 85 : 183,
-	parameter AXIS_PCIE_CC_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 33 : 81,
-	parameter RQ_SEQ_NUM_WIDTH = AXIS_PCIE_RQ_USER_WIDTH == 60 ? 4 : 6,
-	parameter PF_COUNT = 1,
-	parameter VF_COUNT = 0,
-	parameter PCIE_TAG_COUNT = 64,
-	parameter PCIE_DMA_READ_OP_TABLE_SIZE = PCIE_TAG_COUNT,
-	parameter PCIE_DMA_READ_TX_LIMIT = 16,
-	parameter PCIE_DMA_READ_TX_FC_ENABLE = 1,
-	parameter PCIE_DMA_WRITE_OP_TABLE_SIZE = 16,
-	parameter PCIE_DMA_WRITE_TX_LIMIT = 3,
-	parameter PCIE_DMA_WRITE_TX_FC_ENABLE = 1,
+    // PCIe interface configuration
+    parameter AXIS_PCIE_DATA_WIDTH = 512,
+    parameter AXIS_PCIE_KEEP_WIDTH = (AXIS_PCIE_DATA_WIDTH/32),
+    parameter AXIS_PCIE_RC_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 75 : 161,
+    parameter AXIS_PCIE_RQ_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 62 : 137,
+    parameter AXIS_PCIE_CQ_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 85 : 183,
+    parameter AXIS_PCIE_CC_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 33 : 81,
+    parameter RQ_SEQ_NUM_WIDTH = AXIS_PCIE_RQ_USER_WIDTH == 60 ? 4 : 6,
+    parameter PF_COUNT = 1,
+    parameter VF_COUNT = 0,
+    parameter PCIE_TAG_COUNT = 64,
+    parameter PCIE_DMA_READ_OP_TABLE_SIZE = PCIE_TAG_COUNT,
+    parameter PCIE_DMA_READ_TX_LIMIT = 16,
+    parameter PCIE_DMA_READ_TX_FC_ENABLE = 1,
+    parameter PCIE_DMA_WRITE_OP_TABLE_SIZE = 16,
+    parameter PCIE_DMA_WRITE_TX_LIMIT = 3,
+    parameter PCIE_DMA_WRITE_TX_FC_ENABLE = 1,
 
-	// AXI lite interface configuration (control)
-	parameter AXIL_CTRL_DATA_WIDTH = 32,
-	parameter AXIL_CTRL_ADDR_WIDTH = 24,
+    // AXI lite interface configuration (control)
+    parameter AXIL_CTRL_DATA_WIDTH = 32,
+    parameter AXIL_CTRL_ADDR_WIDTH = 24,
 
-	// AXI lite interface configuration (application control)
-	parameter AXIL_APP_CTRL_DATA_WIDTH = AXIL_CTRL_DATA_WIDTH,
-	parameter AXIL_APP_CTRL_ADDR_WIDTH = 24,
+    // AXI lite interface configuration (application control)
+    parameter AXIL_APP_CTRL_DATA_WIDTH = AXIL_CTRL_DATA_WIDTH,
+    parameter AXIL_APP_CTRL_ADDR_WIDTH = 24,
 
-	// Ethernet interface configuration
-	parameter AXIS_ETH_TX_PIPELINE = 0,
-	parameter AXIS_ETH_TX_FIFO_PIPELINE = 2,
-	parameter AXIS_ETH_TX_TS_PIPELINE = 0,
-	parameter AXIS_ETH_RX_PIPELINE = 0,
-	parameter AXIS_ETH_RX_FIFO_PIPELINE = 2,
+    // Ethernet interface configuration
+    parameter AXIS_ETH_TX_PIPELINE = 0,
+    parameter AXIS_ETH_TX_FIFO_PIPELINE = 2,
+    parameter AXIS_ETH_TX_TS_PIPELINE = 0,
+    parameter AXIS_ETH_RX_PIPELINE = 0,
+    parameter AXIS_ETH_RX_FIFO_PIPELINE = 2,
 
-	// Statistics counter subsystem
-	parameter STAT_ENABLE = 1,
-	parameter STAT_DMA_ENABLE = 1,
-	parameter STAT_PCIE_ENABLE = 1,
-	parameter STAT_INC_WIDTH = 24,
-	parameter STAT_ID_WIDTH = 12
+    // Statistics counter subsystem
+    parameter STAT_ENABLE = 1,
+    parameter STAT_DMA_ENABLE = 1,
+    parameter STAT_PCIE_ENABLE = 1,
+    parameter STAT_INC_WIDTH = 24,
+    parameter STAT_ID_WIDTH = 12
 )
 (
 	/*
@@ -195,9 +198,9 @@ module fpga #
 	input  wire [15:0]  pcie_rx_n,
 	output wire [15:0]  pcie_tx_p,
 	output wire [15:0]  pcie_tx_n,
-	input  wire		 pcie_refclk_p,
-	input  wire		 pcie_refclk_n,
-	input  wire		 pcie_rst_n,
+	input  wire 		 pcie_refclk_p,
+	input  wire 		 pcie_refclk_n,
+	input  wire 		 pcie_rst_n,
 
 	/*
 	 * Ethernet: QSFP28
@@ -428,17 +431,6 @@ sync_signal_inst (
 	.in({qsfp_0_mod_prsnt_n, qsfp_0_intr_n}),
 	.out({qsfp_0_mod_prsnt_n_int, qsfp_0_intr_n_int})
 );
-// sync_signal #(
-//	 .WIDTH(8),
-//	 .N(2)
-// )
-// sync_signal_inst (
-//	 .clk(pcie_user_clk),
-//	 .in({qsfp_0_mod_prsnt_n, qsfp_0_intr_n, qsfp_0_i2c_scl, qsfp_0_i2c_sda,
-//		 qsfp_1_mod_prsnt_n, qsfp_1_intr_n, qsfp_1_i2c_scl, qsfp_1_i2c_sda}),
-//	 .out({qsfp_0_mod_prsnt_n_int, qsfp_0_intr_n_int, qsfp_0_i2c_scl_i, qsfp_0_i2c_sda_i,
-//		 qsfp_1_mod_prsnt_n_int, qsfp_1_intr_n_int, qsfp_1_i2c_scl_i, qsfp_1_i2c_sda_i})
-// );
 
 // assign qsfp_0_i2c_scl = qsfp_0_i2c_scl_t_reg ? 1'bz : qsfp_0_i2c_scl_o_reg;
 // assign qsfp_0_i2c_sda = qsfp_0_i2c_sda_t_reg ? 1'bz : qsfp_0_i2c_sda_o_reg;
@@ -656,45 +648,45 @@ IBUFDS_GTE4 #(
 	.REFCLK_HROW_CK_SEL(2'b00)
 )
 ibufds_gte4_pcie_mgt_refclk_inst (
-	.I			 (pcie_refclk_p),
-	.IB			(pcie_refclk_n),
-	.CEB		   (1'b0),
-	.O			 (pcie_sys_clk_gt),
-	.ODIV2		 (pcie_sys_clk)
+    .I             (pcie_refclk_p),
+    .IB            (pcie_refclk_n),
+    .CEB           (1'b0),
+    .O             (pcie_sys_clk_gt),
+    .ODIV2         (pcie_sys_clk)
 );
 
-wire [AXIS_PCIE_DATA_WIDTH-1:0]	axis_rq_tdata;
-wire [AXIS_PCIE_KEEP_WIDTH-1:0]	axis_rq_tkeep;
-wire							   axis_rq_tlast;
-wire							   axis_rq_tready;
+wire [AXIS_PCIE_DATA_WIDTH-1:0]    axis_rq_tdata;
+wire [AXIS_PCIE_KEEP_WIDTH-1:0]    axis_rq_tkeep;
+wire                               axis_rq_tlast;
+wire                               axis_rq_tready;
 wire [AXIS_PCIE_RQ_USER_WIDTH-1:0] axis_rq_tuser;
-wire							   axis_rq_tvalid;
+wire                               axis_rq_tvalid;
 
-wire [AXIS_PCIE_DATA_WIDTH-1:0]	axis_rc_tdata;
-wire [AXIS_PCIE_KEEP_WIDTH-1:0]	axis_rc_tkeep;
-wire							   axis_rc_tlast;
-wire							   axis_rc_tready;
+wire [AXIS_PCIE_DATA_WIDTH-1:0]    axis_rc_tdata;
+wire [AXIS_PCIE_KEEP_WIDTH-1:0]    axis_rc_tkeep;
+wire                               axis_rc_tlast;
+wire                               axis_rc_tready;
 wire [AXIS_PCIE_RC_USER_WIDTH-1:0] axis_rc_tuser;
-wire							   axis_rc_tvalid;
+wire                               axis_rc_tvalid;
 
-wire [AXIS_PCIE_DATA_WIDTH-1:0]	axis_cq_tdata;
-wire [AXIS_PCIE_KEEP_WIDTH-1:0]	axis_cq_tkeep;
-wire							   axis_cq_tlast;
-wire							   axis_cq_tready;
+wire [AXIS_PCIE_DATA_WIDTH-1:0]    axis_cq_tdata;
+wire [AXIS_PCIE_KEEP_WIDTH-1:0]    axis_cq_tkeep;
+wire                               axis_cq_tlast;
+wire                               axis_cq_tready;
 wire [AXIS_PCIE_CQ_USER_WIDTH-1:0] axis_cq_tuser;
-wire							   axis_cq_tvalid;
+wire                               axis_cq_tvalid;
 
-wire [AXIS_PCIE_DATA_WIDTH-1:0]	axis_cc_tdata;
-wire [AXIS_PCIE_KEEP_WIDTH-1:0]	axis_cc_tkeep;
-wire							   axis_cc_tlast;
-wire							   axis_cc_tready;
+wire [AXIS_PCIE_DATA_WIDTH-1:0]    axis_cc_tdata;
+wire [AXIS_PCIE_KEEP_WIDTH-1:0]    axis_cc_tkeep;
+wire                               axis_cc_tlast;
+wire                               axis_cc_tready;
 wire [AXIS_PCIE_CC_USER_WIDTH-1:0] axis_cc_tuser;
-wire							   axis_cc_tvalid;
+wire                               axis_cc_tvalid;
 
-wire [RQ_SEQ_NUM_WIDTH-1:0]		pcie_rq_seq_num0;
-wire							   pcie_rq_seq_num_vld0;
-wire [RQ_SEQ_NUM_WIDTH-1:0]		pcie_rq_seq_num1;
-wire							   pcie_rq_seq_num_vld1;
+wire [RQ_SEQ_NUM_WIDTH-1:0]        pcie_rq_seq_num0;
+wire                               pcie_rq_seq_num_vld0;
+wire [RQ_SEQ_NUM_WIDTH-1:0]        pcie_rq_seq_num1;
+wire                               pcie_rq_seq_num_vld1;
 
 wire [3:0] pcie_tfc_nph_av;
 wire [3:0] pcie_tfc_npd_av;
@@ -704,12 +696,12 @@ wire [2:0] cfg_max_read_req;
 
 wire [9:0]  cfg_mgmt_addr;
 wire [7:0]  cfg_mgmt_function_number;
-wire		cfg_mgmt_write;
+wire        cfg_mgmt_write;
 wire [31:0] cfg_mgmt_write_data;
 wire [3:0]  cfg_mgmt_byte_enable;
-wire		cfg_mgmt_read;
+wire        cfg_mgmt_read;
 wire [31:0] cfg_mgmt_read_data;
-wire		cfg_mgmt_read_write_done;
+wire        cfg_mgmt_read_write_done;
 
 wire [7:0]  cfg_fc_ph;
 wire [11:0] cfg_fc_pd;
@@ -721,17 +713,17 @@ wire [2:0]  cfg_fc_sel;
 
 wire [3:0]  cfg_interrupt_msi_enable;
 wire [11:0] cfg_interrupt_msi_mmenable;
-wire		cfg_interrupt_msi_mask_update;
+wire        cfg_interrupt_msi_mask_update;
 wire [31:0] cfg_interrupt_msi_data;
 wire [3:0]  cfg_interrupt_msi_select;
 wire [31:0] cfg_interrupt_msi_int;
 wire [31:0] cfg_interrupt_msi_pending_status;
-wire		cfg_interrupt_msi_pending_status_data_enable;
+wire        cfg_interrupt_msi_pending_status_data_enable;
 wire [3:0]  cfg_interrupt_msi_pending_status_function_num;
-wire		cfg_interrupt_msi_sent;
-wire		cfg_interrupt_msi_fail;
+wire        cfg_interrupt_msi_sent;
+wire        cfg_interrupt_msi_fail;
 wire [2:0]  cfg_interrupt_msi_attr;
-wire		cfg_interrupt_msi_tph_present;
+wire        cfg_interrupt_msi_tph_present;
 wire [1:0]  cfg_interrupt_msi_tph_type;
 wire [8:0]  cfg_interrupt_msi_tph_st_tag;
 wire [3:0]  cfg_interrupt_msi_function_number;
@@ -747,250 +739,250 @@ reg pcie_user_reset_reg_1 = 1'b1;
 reg pcie_user_reset_reg_2 = 1'b1;
 
 always @(posedge pcie_user_clk) begin
-	pcie_user_reset_reg_1 <= pcie_user_reset_int;
-	pcie_user_reset_reg_2 <= pcie_user_reset_reg_1;
+    pcie_user_reset_reg_1 <= pcie_user_reset_int;
+    pcie_user_reset_reg_2 <= pcie_user_reset_reg_1;
 end
 
 assign pcie_user_reset = pcie_user_reset_reg_2;
 
 // ila_0 ila_rq (
-//	 .clk(pcie_user_clk),
-//	 .trig_out(),
-//	 .trig_out_ack(1'b0),
-//	 .trig_in(1'b0),
-//	 .trig_in_ack(),
-//	 .probe0(axis_rq_tdata),
-//	 .probe1(axis_rq_tkeep),
-//	 .probe2(axis_rq_tvalid),
-//	 .probe3(axis_rq_tready),
-//	 .probe4({pcie_tfc_npd_av, pcie_tfc_nph_av, axis_rq_tuser}),
-//	 .probe5(axis_rq_tlast)
+//     .clk(pcie_user_clk),
+//     .trig_out(),
+//     .trig_out_ack(1'b0),
+//     .trig_in(1'b0),
+//     .trig_in_ack(),
+//     .probe0(axis_rq_tdata),
+//     .probe1(axis_rq_tkeep),
+//     .probe2(axis_rq_tvalid),
+//     .probe3(axis_rq_tready),
+//     .probe4({pcie_tfc_npd_av, pcie_tfc_nph_av, axis_rq_tuser}),
+//     .probe5(axis_rq_tlast)
 // );
 
 // ila_0 ila_rc (
-//	 .clk(pcie_user_clk),
-//	 .trig_out(),
-//	 .trig_out_ack(1'b0),
-//	 .trig_in(1'b0),
-//	 .trig_in_ack(),
-//	 .probe0(axis_rc_tdata),
-//	 .probe1(axis_rc_tkeep),
-//	 .probe2(axis_rc_tvalid),
-//	 .probe3(axis_rc_tready),
-//	 .probe4(axis_rc_tuser),
-//	 .probe5(axis_rc_tlast)
+//     .clk(pcie_user_clk),
+//     .trig_out(),
+//     .trig_out_ack(1'b0),
+//     .trig_in(1'b0),
+//     .trig_in_ack(),
+//     .probe0(axis_rc_tdata),
+//     .probe1(axis_rc_tkeep),
+//     .probe2(axis_rc_tvalid),
+//     .probe3(axis_rc_tready),
+//     .probe4(axis_rc_tuser),
+//     .probe5(axis_rc_tlast)
 // );
 
 pcie4_uscale_plus_0
 pcie4_uscale_plus_inst (
-	.pci_exp_txn(pcie_tx_n),
-	.pci_exp_txp(pcie_tx_p),
-	.pci_exp_rxn(pcie_rx_n),
-	.pci_exp_rxp(pcie_rx_p),
-	.user_clk(pcie_user_clk),
-	.user_reset(pcie_user_reset_int),
-	.user_lnk_up(),
+    .pci_exp_txn(pcie_tx_n),
+    .pci_exp_txp(pcie_tx_p),
+    .pci_exp_rxn(pcie_rx_n),
+    .pci_exp_rxp(pcie_rx_p),
+    .user_clk(pcie_user_clk),
+    .user_reset(pcie_user_reset_int),
+    .user_lnk_up(),
 
-	.s_axis_rq_tdata(axis_rq_tdata),
-	.s_axis_rq_tkeep(axis_rq_tkeep),
-	.s_axis_rq_tlast(axis_rq_tlast),
-	.s_axis_rq_tready(axis_rq_tready),
-	.s_axis_rq_tuser(axis_rq_tuser),
-	.s_axis_rq_tvalid(axis_rq_tvalid),
+    .s_axis_rq_tdata(axis_rq_tdata),
+    .s_axis_rq_tkeep(axis_rq_tkeep),
+    .s_axis_rq_tlast(axis_rq_tlast),
+    .s_axis_rq_tready(axis_rq_tready),
+    .s_axis_rq_tuser(axis_rq_tuser),
+    .s_axis_rq_tvalid(axis_rq_tvalid),
 
-	.m_axis_rc_tdata(axis_rc_tdata),
-	.m_axis_rc_tkeep(axis_rc_tkeep),
-	.m_axis_rc_tlast(axis_rc_tlast),
-	.m_axis_rc_tready(axis_rc_tready),
-	.m_axis_rc_tuser(axis_rc_tuser),
-	.m_axis_rc_tvalid(axis_rc_tvalid),
+    .m_axis_rc_tdata(axis_rc_tdata),
+    .m_axis_rc_tkeep(axis_rc_tkeep),
+    .m_axis_rc_tlast(axis_rc_tlast),
+    .m_axis_rc_tready(axis_rc_tready),
+    .m_axis_rc_tuser(axis_rc_tuser),
+    .m_axis_rc_tvalid(axis_rc_tvalid),
 
-	.m_axis_cq_tdata(axis_cq_tdata),
-	.m_axis_cq_tkeep(axis_cq_tkeep),
-	.m_axis_cq_tlast(axis_cq_tlast),
-	.m_axis_cq_tready(axis_cq_tready),
-	.m_axis_cq_tuser(axis_cq_tuser),
-	.m_axis_cq_tvalid(axis_cq_tvalid),
+    .m_axis_cq_tdata(axis_cq_tdata),
+    .m_axis_cq_tkeep(axis_cq_tkeep),
+    .m_axis_cq_tlast(axis_cq_tlast),
+    .m_axis_cq_tready(axis_cq_tready),
+    .m_axis_cq_tuser(axis_cq_tuser),
+    .m_axis_cq_tvalid(axis_cq_tvalid),
 
-	.s_axis_cc_tdata(axis_cc_tdata),
-	.s_axis_cc_tkeep(axis_cc_tkeep),
-	.s_axis_cc_tlast(axis_cc_tlast),
-	.s_axis_cc_tready(axis_cc_tready),
-	.s_axis_cc_tuser(axis_cc_tuser),
-	.s_axis_cc_tvalid(axis_cc_tvalid),
+    .s_axis_cc_tdata(axis_cc_tdata),
+    .s_axis_cc_tkeep(axis_cc_tkeep),
+    .s_axis_cc_tlast(axis_cc_tlast),
+    .s_axis_cc_tready(axis_cc_tready),
+    .s_axis_cc_tuser(axis_cc_tuser),
+    .s_axis_cc_tvalid(axis_cc_tvalid),
 
-	.pcie_rq_seq_num0(pcie_rq_seq_num0),
-	.pcie_rq_seq_num_vld0(pcie_rq_seq_num_vld0),
-	.pcie_rq_seq_num1(pcie_rq_seq_num1),
-	.pcie_rq_seq_num_vld1(pcie_rq_seq_num_vld1),
-	.pcie_rq_tag0(),
-	.pcie_rq_tag1(),
-	.pcie_rq_tag_av(),
-	.pcie_rq_tag_vld0(),
-	.pcie_rq_tag_vld1(),
+    .pcie_rq_seq_num0(pcie_rq_seq_num0),
+    .pcie_rq_seq_num_vld0(pcie_rq_seq_num_vld0),
+    .pcie_rq_seq_num1(pcie_rq_seq_num1),
+    .pcie_rq_seq_num_vld1(pcie_rq_seq_num_vld1),
+    .pcie_rq_tag0(),
+    .pcie_rq_tag1(),
+    .pcie_rq_tag_av(),
+    .pcie_rq_tag_vld0(),
+    .pcie_rq_tag_vld1(),
 
-	.pcie_tfc_nph_av(pcie_tfc_nph_av),
-	.pcie_tfc_npd_av(pcie_tfc_npd_av),
+    .pcie_tfc_nph_av(pcie_tfc_nph_av),
+    .pcie_tfc_npd_av(pcie_tfc_npd_av),
 
-	.pcie_cq_np_req(1'b1),
-	.pcie_cq_np_req_count(),
+    .pcie_cq_np_req(1'b1),
+    .pcie_cq_np_req_count(),
 
-	.cfg_phy_link_down(),
-	.cfg_phy_link_status(),
-	.cfg_negotiated_width(),
-	.cfg_current_speed(),
-	.cfg_max_payload(cfg_max_payload),
-	.cfg_max_read_req(cfg_max_read_req),
-	.cfg_function_status(),
-	.cfg_function_power_state(),
-	.cfg_vf_status(),
-	.cfg_vf_power_state(),
-	.cfg_link_power_state(),
+    .cfg_phy_link_down(),
+    .cfg_phy_link_status(),
+    .cfg_negotiated_width(),
+    .cfg_current_speed(),
+    .cfg_max_payload(cfg_max_payload),
+    .cfg_max_read_req(cfg_max_read_req),
+    .cfg_function_status(),
+    .cfg_function_power_state(),
+    .cfg_vf_status(),
+    .cfg_vf_power_state(),
+    .cfg_link_power_state(),
 
-	.cfg_mgmt_addr(cfg_mgmt_addr),
-	.cfg_mgmt_function_number(cfg_mgmt_function_number),
-	.cfg_mgmt_write(cfg_mgmt_write),
-	.cfg_mgmt_write_data(cfg_mgmt_write_data),
-	.cfg_mgmt_byte_enable(cfg_mgmt_byte_enable),
-	.cfg_mgmt_read(cfg_mgmt_read),
-	.cfg_mgmt_read_data(cfg_mgmt_read_data),
-	.cfg_mgmt_read_write_done(cfg_mgmt_read_write_done),
-	.cfg_mgmt_debug_access(1'b0),
+    .cfg_mgmt_addr(cfg_mgmt_addr),
+    .cfg_mgmt_function_number(cfg_mgmt_function_number),
+    .cfg_mgmt_write(cfg_mgmt_write),
+    .cfg_mgmt_write_data(cfg_mgmt_write_data),
+    .cfg_mgmt_byte_enable(cfg_mgmt_byte_enable),
+    .cfg_mgmt_read(cfg_mgmt_read),
+    .cfg_mgmt_read_data(cfg_mgmt_read_data),
+    .cfg_mgmt_read_write_done(cfg_mgmt_read_write_done),
+    .cfg_mgmt_debug_access(1'b0),
 
-	.cfg_err_cor_out(),
-	.cfg_err_nonfatal_out(),
-	.cfg_err_fatal_out(),
-	.cfg_local_error_valid(),
-	.cfg_local_error_out(),
-	.cfg_ltssm_state(),
-	.cfg_rx_pm_state(),
-	.cfg_tx_pm_state(),
-	.cfg_rcb_status(),
-	.cfg_obff_enable(),
-	.cfg_pl_status_change(),
-	.cfg_tph_requester_enable(),
-	.cfg_tph_st_mode(),
-	.cfg_vf_tph_requester_enable(),
-	.cfg_vf_tph_st_mode(),
+    .cfg_err_cor_out(),
+    .cfg_err_nonfatal_out(),
+    .cfg_err_fatal_out(),
+    .cfg_local_error_valid(),
+    .cfg_local_error_out(),
+    .cfg_ltssm_state(),
+    .cfg_rx_pm_state(),
+    .cfg_tx_pm_state(),
+    .cfg_rcb_status(),
+    .cfg_obff_enable(),
+    .cfg_pl_status_change(),
+    .cfg_tph_requester_enable(),
+    .cfg_tph_st_mode(),
+    .cfg_vf_tph_requester_enable(),
+    .cfg_vf_tph_st_mode(),
 
-	.cfg_msg_received(),
-	.cfg_msg_received_data(),
-	.cfg_msg_received_type(),
-	.cfg_msg_transmit(1'b0),
-	.cfg_msg_transmit_type(3'd0),
-	.cfg_msg_transmit_data(32'd0),
-	.cfg_msg_transmit_done(),
+    .cfg_msg_received(),
+    .cfg_msg_received_data(),
+    .cfg_msg_received_type(),
+    .cfg_msg_transmit(1'b0),
+    .cfg_msg_transmit_type(3'd0),
+    .cfg_msg_transmit_data(32'd0),
+    .cfg_msg_transmit_done(),
 
-	.cfg_fc_ph(cfg_fc_ph),
-	.cfg_fc_pd(cfg_fc_pd),
-	.cfg_fc_nph(cfg_fc_nph),
-	.cfg_fc_npd(cfg_fc_npd),
-	.cfg_fc_cplh(cfg_fc_cplh),
-	.cfg_fc_cpld(cfg_fc_cpld),
-	.cfg_fc_sel(cfg_fc_sel),
+    .cfg_fc_ph(cfg_fc_ph),
+    .cfg_fc_pd(cfg_fc_pd),
+    .cfg_fc_nph(cfg_fc_nph),
+    .cfg_fc_npd(cfg_fc_npd),
+    .cfg_fc_cplh(cfg_fc_cplh),
+    .cfg_fc_cpld(cfg_fc_cpld),
+    .cfg_fc_sel(cfg_fc_sel),
 
-	.cfg_dsn(64'd0),
+    .cfg_dsn(64'd0),
 
-	.cfg_power_state_change_ack(1'b1),
-	.cfg_power_state_change_interrupt(),
+    .cfg_power_state_change_ack(1'b1),
+    .cfg_power_state_change_interrupt(),
 
-	.cfg_err_cor_in(status_error_cor),
-	.cfg_err_uncor_in(status_error_uncor),
-	.cfg_flr_in_process(),
-	.cfg_flr_done(4'd0),
-	.cfg_vf_flr_in_process(),
-	.cfg_vf_flr_func_num(8'd0),
-	.cfg_vf_flr_done(8'd0),
+    .cfg_err_cor_in(status_error_cor),
+    .cfg_err_uncor_in(status_error_uncor),
+    .cfg_flr_in_process(),
+    .cfg_flr_done(4'd0),
+    .cfg_vf_flr_in_process(),
+    .cfg_vf_flr_func_num(8'd0),
+    .cfg_vf_flr_done(8'd0),
 
-	.cfg_link_training_enable(1'b1),
+    .cfg_link_training_enable(1'b1),
 
-	.cfg_interrupt_int(4'd0),
-	.cfg_interrupt_pending(4'd0),
-	.cfg_interrupt_sent(),
-	.cfg_interrupt_msi_enable(cfg_interrupt_msi_enable),
-	.cfg_interrupt_msi_mmenable(cfg_interrupt_msi_mmenable),
-	.cfg_interrupt_msi_mask_update(cfg_interrupt_msi_mask_update),
-	.cfg_interrupt_msi_data(cfg_interrupt_msi_data),
-	.cfg_interrupt_msi_select(cfg_interrupt_msi_select),
-	.cfg_interrupt_msi_int(cfg_interrupt_msi_int),
-	.cfg_interrupt_msi_pending_status(cfg_interrupt_msi_pending_status),
-	.cfg_interrupt_msi_pending_status_data_enable(cfg_interrupt_msi_pending_status_data_enable),
-	.cfg_interrupt_msi_pending_status_function_num(cfg_interrupt_msi_pending_status_function_num),
-	.cfg_interrupt_msi_sent(cfg_interrupt_msi_sent),
-	.cfg_interrupt_msi_fail(cfg_interrupt_msi_fail),
-	.cfg_interrupt_msi_attr(cfg_interrupt_msi_attr),
-	.cfg_interrupt_msi_tph_present(cfg_interrupt_msi_tph_present),
-	.cfg_interrupt_msi_tph_type(cfg_interrupt_msi_tph_type),
-	.cfg_interrupt_msi_tph_st_tag(cfg_interrupt_msi_tph_st_tag),
-	.cfg_interrupt_msi_function_number(cfg_interrupt_msi_function_number),
+    .cfg_interrupt_int(4'd0),
+    .cfg_interrupt_pending(4'd0),
+    .cfg_interrupt_sent(),
+    .cfg_interrupt_msi_enable(cfg_interrupt_msi_enable),
+    .cfg_interrupt_msi_mmenable(cfg_interrupt_msi_mmenable),
+    .cfg_interrupt_msi_mask_update(cfg_interrupt_msi_mask_update),
+    .cfg_interrupt_msi_data(cfg_interrupt_msi_data),
+    .cfg_interrupt_msi_select(cfg_interrupt_msi_select),
+    .cfg_interrupt_msi_int(cfg_interrupt_msi_int),
+    .cfg_interrupt_msi_pending_status(cfg_interrupt_msi_pending_status),
+    .cfg_interrupt_msi_pending_status_data_enable(cfg_interrupt_msi_pending_status_data_enable),
+    .cfg_interrupt_msi_pending_status_function_num(cfg_interrupt_msi_pending_status_function_num),
+    .cfg_interrupt_msi_sent(cfg_interrupt_msi_sent),
+    .cfg_interrupt_msi_fail(cfg_interrupt_msi_fail),
+    .cfg_interrupt_msi_attr(cfg_interrupt_msi_attr),
+    .cfg_interrupt_msi_tph_present(cfg_interrupt_msi_tph_present),
+    .cfg_interrupt_msi_tph_type(cfg_interrupt_msi_tph_type),
+    .cfg_interrupt_msi_tph_st_tag(cfg_interrupt_msi_tph_st_tag),
+    .cfg_interrupt_msi_function_number(cfg_interrupt_msi_function_number),
 
-	.cfg_pm_aspm_l1_entry_reject(1'b0),
-	.cfg_pm_aspm_tx_l0s_entry_disable(1'b0),
+    .cfg_pm_aspm_l1_entry_reject(1'b0),
+    .cfg_pm_aspm_tx_l0s_entry_disable(1'b0),
 
-	.cfg_hot_reset_out(),
+    .cfg_hot_reset_out(),
 
-	.cfg_config_space_enable(1'b1),
-	.cfg_req_pm_transition_l23_ready(1'b0),
-	.cfg_hot_reset_in(1'b0),
+    .cfg_config_space_enable(1'b1),
+    .cfg_req_pm_transition_l23_ready(1'b0),
+    .cfg_hot_reset_in(1'b0),
 
-	.cfg_ds_port_number(8'd0),
-	.cfg_ds_bus_number(8'd0),
-	.cfg_ds_device_number(5'd0),
+    .cfg_ds_port_number(8'd0),
+    .cfg_ds_bus_number(8'd0),
+    .cfg_ds_device_number(5'd0),
 
-	.sys_clk(pcie_sys_clk),
-	.sys_clk_gt(pcie_sys_clk_gt),
-	.sys_reset(pcie_rst_n),
+    .sys_clk(pcie_sys_clk),
+    .sys_clk_gt(pcie_sys_clk_gt),
+    .sys_reset(pcie_rst_n),
 
-	.phy_rdy_out()
+    .phy_rdy_out()
 );
 
 // XGMII 10G PHY
 
 // QSFP0
-wire						 qsfp_0_tx_clk_0_int;
-wire						 qsfp_0_tx_rst_0_int;
+wire                         qsfp_0_tx_clk_0_int;
+wire                         qsfp_0_tx_rst_0_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_0_txd_0_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_0_txc_0_int;
-wire						 qsfp_0_tx_prbs31_enable_0_int;
-wire						 qsfp_0_rx_clk_0_int;
-wire						 qsfp_0_rx_rst_0_int;
+wire                         qsfp_0_tx_prbs31_enable_0_int;
+wire                         qsfp_0_rx_clk_0_int;
+wire                         qsfp_0_rx_rst_0_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_0_rxd_0_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_0_rxc_0_int;
-wire						 qsfp_0_rx_prbs31_enable_0_int;
-wire [6:0]				   qsfp_0_rx_error_count_0_int;
-wire						 qsfp_0_tx_clk_1_int;
-wire						 qsfp_0_tx_rst_1_int;
+wire                         qsfp_0_rx_prbs31_enable_0_int;
+wire [6:0]                   qsfp_0_rx_error_count_0_int;
+wire                         qsfp_0_tx_clk_1_int;
+wire                         qsfp_0_tx_rst_1_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_0_txd_1_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_0_txc_1_int;
-wire						 qsfp_0_tx_prbs31_enable_1_int;
-wire						 qsfp_0_rx_clk_1_int;
-wire						 qsfp_0_rx_rst_1_int;
+wire                         qsfp_0_tx_prbs31_enable_1_int;
+wire                         qsfp_0_rx_clk_1_int;
+wire                         qsfp_0_rx_rst_1_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_0_rxd_1_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_0_rxc_1_int;
-wire						 qsfp_0_rx_prbs31_enable_1_int;
-wire [6:0]				   qsfp_0_rx_error_count_1_int;
-wire						 qsfp_0_tx_clk_2_int;
-wire						 qsfp_0_tx_rst_2_int;
+wire                         qsfp_0_rx_prbs31_enable_1_int;
+wire [6:0]                   qsfp_0_rx_error_count_1_int;
+wire                         qsfp_0_tx_clk_2_int;
+wire                         qsfp_0_tx_rst_2_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_0_txd_2_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_0_txc_2_int;
-wire						 qsfp_0_tx_prbs31_enable_2_int;
-wire						 qsfp_0_rx_clk_2_int;
-wire						 qsfp_0_rx_rst_2_int;
+wire                         qsfp_0_tx_prbs31_enable_2_int;
+wire                         qsfp_0_rx_clk_2_int;
+wire                         qsfp_0_rx_rst_2_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_0_rxd_2_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_0_rxc_2_int;
-wire						 qsfp_0_rx_prbs31_enable_2_int;
-wire [6:0]				   qsfp_0_rx_error_count_2_int;
-wire						 qsfp_0_tx_clk_3_int;
-wire						 qsfp_0_tx_rst_3_int;
+wire                         qsfp_0_rx_prbs31_enable_2_int;
+wire [6:0]                   qsfp_0_rx_error_count_2_int;
+wire                         qsfp_0_tx_clk_3_int;
+wire                         qsfp_0_tx_rst_3_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_0_txd_3_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_0_txc_3_int;
-wire						 qsfp_0_tx_prbs31_enable_3_int;
-wire						 qsfp_0_rx_clk_3_int;
-wire						 qsfp_0_rx_rst_3_int;
+wire                         qsfp_0_tx_prbs31_enable_3_int;
+wire                         qsfp_0_rx_clk_3_int;
+wire                         qsfp_0_rx_rst_3_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_0_rxd_3_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_0_rxc_3_int;
-wire						 qsfp_0_rx_prbs31_enable_3_int;
-wire [6:0]				   qsfp_0_rx_error_count_3_int;
+wire                         qsfp_0_rx_prbs31_enable_3_int;
+wire [6:0]                   qsfp_0_rx_error_count_3_int;
 
 wire qsfp_0_rx_block_lock_0;
 wire qsfp_0_rx_block_lock_1;
@@ -1004,32 +996,32 @@ wire qsfp_0_mgt_refclk_int;
 wire qsfp_0_mgt_refclk_bufg;
 
 IBUFDS_GTE4 ibufds_gte4_qsfp_0_mgt_refclk_inst (
-	.I	 (qsfp_0_mgt_refclk_p),
-	.IB	(qsfp_0_mgt_refclk_n),
-	.CEB   (1'b0),
-	.O	 (qsfp_0_mgt_refclk),
-	.ODIV2 (qsfp_0_mgt_refclk_int)
+    .I     (qsfp_0_mgt_refclk_p),
+    .IB    (qsfp_0_mgt_refclk_n),
+    .CEB   (1'b0),
+    .O     (qsfp_0_mgt_refclk),
+    .ODIV2 (qsfp_0_mgt_refclk_int)
 );
 
 BUFG_GT bufg_gt_qsfp_0_mgt_refclk_inst (
-	.CE	  (qsfp_0_gtpowergood),
-	.CEMASK  (1'b1),
-	.CLR	 (1'b0),
-	.CLRMASK (1'b1),
-	.DIV	 (3'd0),
-	.I	   (qsfp_0_mgt_refclk_int),
-	.O	   (qsfp_0_mgt_refclk_bufg)
+    .CE      (qsfp_0_gtpowergood),
+    .CEMASK  (1'b1),
+    .CLR     (1'b0),
+    .CLRMASK (1'b1),
+    .DIV     (3'd0),
+    .I       (qsfp_0_mgt_refclk_int),
+    .O       (qsfp_0_mgt_refclk_bufg)
 );
 
 wire qsfp_0_rst;
 
 sync_reset #(
-	.N(4)
+    .N(4)
 )
 qsfp_0_sync_reset_inst (
-	.clk(qsfp_0_mgt_refclk_bufg),
-	.rst(rst_125mhz_int),
-	.out(qsfp_0_rst)
+    .clk(qsfp_0_mgt_refclk_bufg),
+    .rst(rst_125mhz_int),
+    .out(qsfp_0_rst)
 );
 
 wire qsfp_0_qpll0lock;
@@ -1039,9 +1031,9 @@ wire qsfp_0_qpll0outrefclk;
 eth_xcvr_phy_wrapper #(
 	.HAS_COMMON(1),
 	.PRBS31_ENABLE(1),
-	.TX_SERDES_PIPELINE(1),		// 10G: -
-	.RX_SERDES_PIPELINE(1),		// 10G: -
-	.COUNT_125US(125000/2.56)	// 10G: -
+	.TX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.RX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.COUNT_125US(125000/2.56)	// linjw: 10G: -
 )
 qsfp_0_phy_0_inst (
 	.xcvr_ctrl_clk(clk_125mhz_int),
@@ -1090,9 +1082,9 @@ qsfp_0_phy_0_inst (
 eth_xcvr_phy_wrapper #(
 	.HAS_COMMON(0),
 	.PRBS31_ENABLE(1),
-	.TX_SERDES_PIPELINE(1),		// 10G: -
-	.RX_SERDES_PIPELINE(1),		// 10G: -
-	.COUNT_125US(125000/2.56)	// 10G: -
+	.TX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.RX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.COUNT_125US(125000/2.56)	// linjw: 10G: -
 )
 qsfp_0_phy_1_inst (
 	.xcvr_ctrl_clk(clk_125mhz_int),
@@ -1141,9 +1133,9 @@ qsfp_0_phy_1_inst (
 eth_xcvr_phy_wrapper #(
 	.HAS_COMMON(0),
 	.PRBS31_ENABLE(1),
-	.TX_SERDES_PIPELINE(1),		// 10G: -
-	.RX_SERDES_PIPELINE(1),		// 10G: -
-	.COUNT_125US(125000/2.56)	// 10G: -
+	.TX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.RX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.COUNT_125US(125000/2.56)	// linjw: 10G: -
 )
 qsfp_0_phy_2_inst (
 	.xcvr_ctrl_clk(clk_125mhz_int),
@@ -1192,9 +1184,9 @@ qsfp_0_phy_2_inst (
 eth_xcvr_phy_wrapper #(
 	.HAS_COMMON(0),
 	.PRBS31_ENABLE(1),
-	.TX_SERDES_PIPELINE(1),		// 10G: -
-	.RX_SERDES_PIPELINE(1),		// 10G: -
-	.COUNT_125US(125000/2.56)	// 10G: -
+	.TX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.RX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.COUNT_125US(125000/2.56)	// linjw: 10G: -
 )
 qsfp_0_phy_3_inst (
 	.xcvr_ctrl_clk(clk_125mhz_int),
@@ -1241,50 +1233,50 @@ qsfp_0_phy_3_inst (
 );
 
 // QSFP1
-wire						 qsfp_1_tx_clk_0_int;
-wire						 qsfp_1_tx_rst_0_int;
+wire                         qsfp_1_tx_clk_0_int;
+wire                         qsfp_1_tx_rst_0_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_1_txd_0_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_1_txc_0_int;
-wire						 qsfp_1_tx_prbs31_enable_0_int;
-wire						 qsfp_1_rx_clk_0_int;
-wire						 qsfp_1_rx_rst_0_int;
+wire                         qsfp_1_tx_prbs31_enable_0_int;
+wire                         qsfp_1_rx_clk_0_int;
+wire                         qsfp_1_rx_rst_0_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_1_rxd_0_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_1_rxc_0_int;
-wire						 qsfp_1_rx_prbs31_enable_0_int;
-wire [6:0]				   qsfp_1_rx_error_count_0_int;
-wire						 qsfp_1_tx_clk_1_int;
-wire						 qsfp_1_tx_rst_1_int;
+wire                         qsfp_1_rx_prbs31_enable_0_int;
+wire [6:0]                   qsfp_1_rx_error_count_0_int;
+wire                         qsfp_1_tx_clk_1_int;
+wire                         qsfp_1_tx_rst_1_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_1_txd_1_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_1_txc_1_int;
-wire						 qsfp_1_tx_prbs31_enable_1_int;
-wire						 qsfp_1_rx_clk_1_int;
-wire						 qsfp_1_rx_rst_1_int;
+wire                         qsfp_1_tx_prbs31_enable_1_int;
+wire                         qsfp_1_rx_clk_1_int;
+wire                         qsfp_1_rx_rst_1_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_1_rxd_1_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_1_rxc_1_int;
-wire						 qsfp_1_rx_prbs31_enable_1_int;
-wire [6:0]				   qsfp_1_rx_error_count_1_int;
-wire						 qsfp_1_tx_clk_2_int;
-wire						 qsfp_1_tx_rst_2_int;
+wire                         qsfp_1_rx_prbs31_enable_1_int;
+wire [6:0]                   qsfp_1_rx_error_count_1_int;
+wire                         qsfp_1_tx_clk_2_int;
+wire                         qsfp_1_tx_rst_2_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_1_txd_2_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_1_txc_2_int;
-wire						 qsfp_1_tx_prbs31_enable_2_int;
-wire						 qsfp_1_rx_clk_2_int;
-wire						 qsfp_1_rx_rst_2_int;
+wire                         qsfp_1_tx_prbs31_enable_2_int;
+wire                         qsfp_1_rx_clk_2_int;
+wire                         qsfp_1_rx_rst_2_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_1_rxd_2_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_1_rxc_2_int;
-wire						 qsfp_1_rx_prbs31_enable_2_int;
-wire [6:0]				   qsfp_1_rx_error_count_2_int;
-wire						 qsfp_1_tx_clk_3_int;
-wire						 qsfp_1_tx_rst_3_int;
+wire                         qsfp_1_rx_prbs31_enable_2_int;
+wire [6:0]                   qsfp_1_rx_error_count_2_int;
+wire                         qsfp_1_tx_clk_3_int;
+wire                         qsfp_1_tx_rst_3_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_1_txd_3_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_1_txc_3_int;
-wire						 qsfp_1_tx_prbs31_enable_3_int;
-wire						 qsfp_1_rx_clk_3_int;
-wire						 qsfp_1_rx_rst_3_int;
+wire                         qsfp_1_tx_prbs31_enable_3_int;
+wire                         qsfp_1_rx_clk_3_int;
+wire                         qsfp_1_rx_rst_3_int;
 wire [XGMII_DATA_WIDTH-1:0]  qsfp_1_rxd_3_int;
 wire [XGMII_CTRL_WIDTH-1:0]  qsfp_1_rxc_3_int;
-wire						 qsfp_1_rx_prbs31_enable_3_int;
-wire [6:0]				   qsfp_1_rx_error_count_3_int;
+wire                         qsfp_1_rx_prbs31_enable_3_int;
+wire [6:0]                   qsfp_1_rx_error_count_3_int;
 
 wire qsfp_1_rx_block_lock_0;
 wire qsfp_1_rx_block_lock_1;
@@ -1298,32 +1290,32 @@ wire qsfp_1_mgt_refclk_int;
 wire qsfp_1_mgt_refclk_bufg;
 
 IBUFDS_GTE4 ibufds_gte4_qsfp_1_mgt_refclk_inst (
-	.I	 (qsfp_1_mgt_refclk_p),
-	.IB	(qsfp_1_mgt_refclk_n),
-	.CEB   (1'b0),
-	.O	 (qsfp_1_mgt_refclk),
-	.ODIV2 (qsfp_1_mgt_refclk_int)
+    .I     (qsfp_1_mgt_refclk_p),
+    .IB    (qsfp_1_mgt_refclk_n),
+    .CEB   (1'b0),
+    .O     (qsfp_1_mgt_refclk),
+    .ODIV2 (qsfp_1_mgt_refclk_int)
 );
 
 BUFG_GT bufg_gt_qsfp_1_mgt_refclk_inst (
-	.CE	  (qsfp_1_gtpowergood),
-	.CEMASK  (1'b1),
-	.CLR	 (1'b0),
-	.CLRMASK (1'b1),
-	.DIV	 (3'd0),
-	.I	   (qsfp_1_mgt_refclk_int),
-	.O	   (qsfp_1_mgt_refclk_bufg)
+    .CE      (qsfp_1_gtpowergood),
+    .CEMASK  (1'b1),
+    .CLR     (1'b0),
+    .CLRMASK (1'b1),
+    .DIV     (3'd0),
+    .I       (qsfp_1_mgt_refclk_int),
+    .O       (qsfp_1_mgt_refclk_bufg)
 );
 
 wire qsfp_1_rst;
 
 sync_reset #(
-	.N(4)
+    .N(4)
 )
 qsfp_1_sync_reset_inst (
-	.clk(qsfp_1_mgt_refclk_bufg),
-	.rst(rst_125mhz_int),
-	.out(qsfp_1_rst)
+    .clk(qsfp_1_mgt_refclk_bufg),
+    .rst(rst_125mhz_int),
+    .out(qsfp_1_rst)
 );
 
 wire qsfp_1_qpll0lock;
@@ -1333,9 +1325,9 @@ wire qsfp_1_qpll0outrefclk;
 eth_xcvr_phy_wrapper #(
 	.HAS_COMMON(1),
 	.PRBS31_ENABLE(1),
-	.TX_SERDES_PIPELINE(1),		// 10G: -
-	.RX_SERDES_PIPELINE(1),		// 10G: -
-	.COUNT_125US(125000/2.56)	// 10G: -
+	.TX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.RX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.COUNT_125US(125000/2.56)	// linjw: 10G: -
 )
 qsfp_1_phy_0_inst (
 	.xcvr_ctrl_clk(clk_125mhz_int),
@@ -1384,9 +1376,9 @@ qsfp_1_phy_0_inst (
 eth_xcvr_phy_wrapper #(
 	.HAS_COMMON(0),
 	.PRBS31_ENABLE(1),
-	.TX_SERDES_PIPELINE(1),		// 10G: -
-	.RX_SERDES_PIPELINE(1),		// 10G: -
-	.COUNT_125US(125000/2.56)	// 10G: -
+	.TX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.RX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.COUNT_125US(125000/2.56)	// linjw: 10G: -
 )
 qsfp_1_phy_1_inst (
 	.xcvr_ctrl_clk(clk_125mhz_int),
@@ -1435,9 +1427,9 @@ qsfp_1_phy_1_inst (
 eth_xcvr_phy_wrapper #(
 	.HAS_COMMON(0),
 	.PRBS31_ENABLE(1),
-	.TX_SERDES_PIPELINE(1),		// 10G: -
-	.RX_SERDES_PIPELINE(1),		// 10G: -
-	.COUNT_125US(125000/2.56)	// 10G: -
+	.TX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.RX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.COUNT_125US(125000/2.56)	// linjw: 10G: -
 )
 qsfp_1_phy_2_inst (
 	.xcvr_ctrl_clk(clk_125mhz_int),
@@ -1486,9 +1478,9 @@ qsfp_1_phy_2_inst (
 eth_xcvr_phy_wrapper #(
 	.HAS_COMMON(0),
 	.PRBS31_ENABLE(1),
-	.TX_SERDES_PIPELINE(1),		// 10G: -
-	.RX_SERDES_PIPELINE(1),		// 10G: -
-	.COUNT_125US(125000/2.56)	// 10G: -
+	.TX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.RX_SERDES_PIPELINE(1),		// linjw: 10G: -
+	.COUNT_125US(125000/2.56)	// linjw: 10G: -
 )
 qsfp_1_phy_3_inst (
 	.xcvr_ctrl_clk(clk_125mhz_int),
@@ -1544,12 +1536,15 @@ assign led_green[6] = qsfp_1_rx_block_lock_2;
 assign led_green[7] = qsfp_1_rx_block_lock_3;
 
 fpga_core #(
-	// FW and board IDs
-	.FW_ID(FW_ID),
-	.FW_VER(FW_VER),
-	.BOARD_ID(BOARD_ID),
-	.BOARD_VER(BOARD_VER),
-	.FPGA_ID(FPGA_ID),
+    // FW and board IDs
+    .FPGA_ID(FPGA_ID),
+    .FW_ID(FW_ID),
+    .FW_VER(FW_VER),
+    .BOARD_ID(BOARD_ID),
+    .BOARD_VER(BOARD_VER),
+    .BUILD_DATE(BUILD_DATE),
+    .GIT_HASH(GIT_HASH),
+    .RELEASE_INFO(RELEASE_INFO),
 
 	// Structural configuration
 	.IF_COUNT(IF_COUNT),

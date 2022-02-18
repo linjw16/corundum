@@ -3,6 +3,7 @@
 *.pyc
 *.vvp
 *.kate-swp
+*.bit
 
 .*
 !.gitignore
