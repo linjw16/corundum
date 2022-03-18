@@ -6,9 +6,9 @@ set_property CFGBVS GND                                [current_design]
 set_property CONFIG_VOLTAGE 1.8                        [current_design]
 set_property BITSTREAM.GENERAL.COMPRESS true           [current_design]
 set_property BITSTREAM.CONFIG.EXTMASTERCCLK_EN disable [current_design]
-set_property BITSTREAM.CONFIG.SPI_32BIT_ADDR YES       [current_design]
-set_property BITSTREAM.CONFIG.SPI_BUSWIDTH 4           [current_design]
-set_property BITSTREAM.CONFIG.SPI_FALL_EDGE YES        [current_design]
+# set_property BITSTREAM.CONFIG.SPI_32BIT_ADDR YES       [current_design]
+# set_property BITSTREAM.CONFIG.SPI_BUSWIDTH 4           [current_design]
+# set_property BITSTREAM.CONFIG.SPI_FALL_EDGE YES        [current_design]
 #set_property BITSTREAM.CONFIG.CONFIGRATE 85.0          [current_design]
 #et_property CONFIG_MODE SPIx4                         [current_design]
 #set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN Enable  [current_design]
@@ -38,22 +38,39 @@ set_output_delay 0 [get_ports {led_sreg_d led_sreg_ld led_sreg_clk led_bmc[*] le
 
 
 #################################################GTY bank 130 (QSFP0)###################################################
-set_property -dict {LOC H39 } [get_ports qsfp_0_rx_0_p] ;# MGTYRXP0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC H40 } [get_ports qsfp_0_rx_0_n] ;# MGTYRXN0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC J36 } [get_ports qsfp_0_tx_0_p] ;# MGTYTXP0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC J37 } [get_ports qsfp_0_tx_0_n] ;# MGTYTXN0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC J41 } [get_ports qsfp_0_rx_1_p] ;# MGTYRXP1_130 GTYE4_CHANNEL_X0Y13 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC J42 } [get_ports qsfp_0_rx_1_n] ;# MGTYRXN1_130 GTYE4_CHANNEL_X0Y13 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC K34 } [get_ports qsfp_0_tx_1_p] ;# MGTYTXP1_130 GTYE4_CHANNEL_X0Y13 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC K35 } [get_ports qsfp_0_tx_1_n] ;# MGTYTXN1_130 GTYE4_CHANNEL_X0Y13 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC K39 } [get_ports qsfp_0_rx_2_p] ;# MGTYRXP2_130 GTYE4_CHANNEL_X0Y14 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC K40 } [get_ports qsfp_0_rx_2_n] ;# MGTYRXN2_130 GTYE4_CHANNEL_X0Y14 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC L36 } [get_ports qsfp_0_tx_2_p] ;# MGTYTXP2_130 GTYE4_CHANNEL_X0Y14 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC L37 } [get_ports qsfp_0_tx_2_n] ;# MGTYTXN2_130 GTYE4_CHANNEL_X0Y14 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC L41 } [get_ports qsfp_0_rx_3_p] ;# MGTYRXP3_130 GTYE4_CHANNEL_X0Y15 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC L42 } [get_ports qsfp_0_rx_3_n] ;# MGTYRXN3_130 GTYE4_CHANNEL_X0Y15 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC M34 } [get_ports qsfp_0_tx_3_p] ;# MGTYTXP3_130 GTYE4_CHANNEL_X0Y15 / GTYE4_COMMON_X0Y1
-set_property -dict {LOC M35 } [get_ports qsfp_0_tx_3_n] ;# MGTYTXN3_130 GTYE4_CHANNEL_X0Y15 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC L41 } [get_ports qsfp_0_rx_0_p] ;# MGTYRXP3_130 GTYE4_CHANNEL_X0Y15 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC L42 } [get_ports qsfp_0_rx_0_n] ;# MGTYRXN3_130 GTYE4_CHANNEL_X0Y15 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC M34 } [get_ports qsfp_0_tx_0_p] ;# MGTYTXP3_130 GTYE4_CHANNEL_X0Y15 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC M35 } [get_ports qsfp_0_tx_0_n] ;# MGTYTXN3_130 GTYE4_CHANNEL_X0Y15 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC K39 } [get_ports qsfp_0_rx_1_p] ;# MGTYRXP2_130 GTYE4_CHANNEL_X0Y14 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC K40 } [get_ports qsfp_0_rx_1_n] ;# MGTYRXN2_130 GTYE4_CHANNEL_X0Y14 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC L36 } [get_ports qsfp_0_tx_1_p] ;# MGTYTXP2_130 GTYE4_CHANNEL_X0Y14 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC L37 } [get_ports qsfp_0_tx_1_n] ;# MGTYTXN2_130 GTYE4_CHANNEL_X0Y14 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC J41 } [get_ports qsfp_0_rx_2_p] ;# MGTYRXP1_130 GTYE4_CHANNEL_X0Y13 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC J42 } [get_ports qsfp_0_rx_2_n] ;# MGTYRXN1_130 GTYE4_CHANNEL_X0Y13 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC K34 } [get_ports qsfp_0_tx_2_p] ;# MGTYTXP1_130 GTYE4_CHANNEL_X0Y13 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC K35 } [get_ports qsfp_0_tx_2_n] ;# MGTYTXN1_130 GTYE4_CHANNEL_X0Y13 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC H39 } [get_ports qsfp_0_rx_3_p] ;# MGTYRXP0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC H40 } [get_ports qsfp_0_rx_3_n] ;# MGTYRXN0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC J36 } [get_ports qsfp_0_tx_3_p] ;# MGTYTXP0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
+set_property -dict {LOC J37 } [get_ports qsfp_0_tx_3_n] ;# MGTYTXN0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
+
+# set_property -dict {LOC H39 } [get_ports qsfp_0_rx_0_p] ;# MGTYRXP0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC H40 } [get_ports qsfp_0_rx_0_n] ;# MGTYRXN0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC J36 } [get_ports qsfp_0_tx_0_p] ;# MGTYTXP0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC J37 } [get_ports qsfp_0_tx_0_n] ;# MGTYTXN0_130 GTYE4_CHANNEL_X0Y12 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC J41 } [get_ports qsfp_0_rx_1_p] ;# MGTYRXP1_130 GTYE4_CHANNEL_X0Y13 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC J42 } [get_ports qsfp_0_rx_1_n] ;# MGTYRXN1_130 GTYE4_CHANNEL_X0Y13 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC K34 } [get_ports qsfp_0_tx_1_p] ;# MGTYTXP1_130 GTYE4_CHANNEL_X0Y13 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC K35 } [get_ports qsfp_0_tx_1_n] ;# MGTYTXN1_130 GTYE4_CHANNEL_X0Y13 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC K39 } [get_ports qsfp_0_rx_2_p] ;# MGTYRXP2_130 GTYE4_CHANNEL_X0Y14 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC K40 } [get_ports qsfp_0_rx_2_n] ;# MGTYRXN2_130 GTYE4_CHANNEL_X0Y14 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC L36 } [get_ports qsfp_0_tx_2_p] ;# MGTYTXP2_130 GTYE4_CHANNEL_X0Y14 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC L37 } [get_ports qsfp_0_tx_2_n] ;# MGTYTXN2_130 GTYE4_CHANNEL_X0Y14 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC L41 } [get_ports qsfp_0_rx_3_p] ;# MGTYRXP3_130 GTYE4_CHANNEL_X0Y15 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC L42 } [get_ports qsfp_0_rx_3_n] ;# MGTYRXN3_130 GTYE4_CHANNEL_X0Y15 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC M34 } [get_ports qsfp_0_tx_3_p] ;# MGTYTXP3_130 GTYE4_CHANNEL_X0Y15 / GTYE4_COMMON_X0Y1
+# set_property -dict {LOC M35 } [get_ports qsfp_0_tx_3_n] ;# MGTYTXN3_130 GTYE4_CHANNEL_X0Y15 / GTYE4_COMMON_X0Y1
 
 set_property -dict {LOC R32 } [get_ports qsfp_0_mgt_refclk_p] ;# MGTREFCLK0P_130 from SI5394 OUT0
 set_property -dict {LOC R33 } [get_ports qsfp_0_mgt_refclk_n] ;# MGTREFCLK0N_130 from SI5394 OUT0
@@ -101,70 +118,70 @@ set_input_delay 0 [get_ports {qsfp_1_mod_prsnt_n qsfp_1_intr_n}]
 
 
 ##########################################PCIE GF###############################################################
-set_property PACKAGE_PIN AE1 [get_ports pcie_rx_n[0] ]   
-set_property PACKAGE_PIN AF3 [get_ports pcie_rx_n[1] ]   
-set_property PACKAGE_PIN AR1 [get_ports pcie_rx_n[10]]   
-set_property PACKAGE_PIN AT3 [get_ports pcie_rx_n[11]]   
-set_property PACKAGE_PIN AU1 [get_ports pcie_rx_n[12]]   
-set_property PACKAGE_PIN AV3 [get_ports pcie_rx_n[13]]   
-set_property PACKAGE_PIN AW1 [get_ports pcie_rx_n[14]]   
-set_property PACKAGE_PIN BA1 [get_ports pcie_rx_n[15]]   
-set_property PACKAGE_PIN AG1 [get_ports pcie_rx_n[2] ]   
-set_property PACKAGE_PIN AH3 [get_ports pcie_rx_n[3] ]   
-set_property PACKAGE_PIN AJ1 [get_ports pcie_rx_n[4]  ]  
-set_property PACKAGE_PIN AK3 [get_ports pcie_rx_n[5]  ]  
-set_property PACKAGE_PIN AL1 [get_ports pcie_rx_n[6]  ]  
-set_property PACKAGE_PIN AM3 [get_ports pcie_rx_n[7]  ]  
-set_property PACKAGE_PIN AN1 [get_ports pcie_rx_n[8]  ]  
-set_property PACKAGE_PIN AP3 [get_ports pcie_rx_n[9]  ]  
-set_property PACKAGE_PIN AE2 [get_ports pcie_rx_p[0] ]   
-set_property PACKAGE_PIN AF4 [get_ports pcie_rx_p[1] ]   
-set_property PACKAGE_PIN AR2 [get_ports pcie_rx_p[10]]   
-set_property PACKAGE_PIN AT4 [get_ports pcie_rx_p[11]]   
-set_property PACKAGE_PIN AU2 [get_ports pcie_rx_p[12]]   
-set_property PACKAGE_PIN AV4 [get_ports pcie_rx_p[13]]   
-set_property PACKAGE_PIN AW2 [get_ports pcie_rx_p[14]]   
-set_property PACKAGE_PIN BA2 [get_ports pcie_rx_p[15]]   
-set_property PACKAGE_PIN AG2 [get_ports pcie_rx_p[2] ]   
-set_property PACKAGE_PIN AH4 [get_ports pcie_rx_p[3] ]   
-set_property PACKAGE_PIN AJ2 [get_ports pcie_rx_p[4]  ]  
-set_property PACKAGE_PIN AK4 [get_ports pcie_rx_p[5]  ]  
-set_property PACKAGE_PIN AL2 [get_ports pcie_rx_p[6]  ]  
-set_property PACKAGE_PIN AM4 [get_ports pcie_rx_p[7]  ]  
-set_property PACKAGE_PIN AN2 [get_ports pcie_rx_p[8]  ]  
-set_property PACKAGE_PIN AP4 [get_ports pcie_rx_p[9]  ]  
-set_property PACKAGE_PIN AD7 [get_ports pcie_tx_n[0] ]   
-set_property PACKAGE_PIN AE5 [get_ports pcie_tx_n[1] ]   
-set_property PACKAGE_PIN AP7 [get_ports pcie_tx_n[10]]   
-set_property PACKAGE_PIN AR5 [get_ports pcie_tx_n[11]]   
-set_property PACKAGE_PIN AT7 [get_ports pcie_tx_n[12]]   
-set_property PACKAGE_PIN AU5 [get_ports pcie_tx_n[13]]   
-set_property PACKAGE_PIN AW5 [get_ports pcie_tx_n[14]]   
-set_property PACKAGE_PIN AY3 [get_ports pcie_tx_n[15]]   
-set_property PACKAGE_PIN AF7 [get_ports pcie_tx_n[2] ]   
-set_property PACKAGE_PIN AG5 [get_ports pcie_tx_n[3] ]   
-set_property PACKAGE_PIN AH7 [get_ports pcie_tx_n[4]  ]  
-set_property PACKAGE_PIN AJ5 [get_ports pcie_tx_n[5]  ]  
-set_property PACKAGE_PIN AK7 [get_ports pcie_tx_n[6]  ]  
-set_property PACKAGE_PIN AL5 [get_ports pcie_tx_n[7]  ]  
-set_property PACKAGE_PIN AM7 [get_ports pcie_tx_n[8]  ]  
-set_property PACKAGE_PIN AN5 [get_ports pcie_tx_n[9]  ]  
-set_property PACKAGE_PIN AD8 [get_ports pcie_tx_p[0] ]   
-set_property PACKAGE_PIN AE6 [get_ports pcie_tx_p[1] ]   
-set_property PACKAGE_PIN AP8 [get_ports pcie_tx_p[10]]   
-set_property PACKAGE_PIN AR6 [get_ports pcie_tx_p[11]]   
+set_property PACKAGE_PIN AE1 [get_ports pcie_rx_n[ 0]]
+set_property PACKAGE_PIN AF3 [get_ports pcie_rx_n[ 1]]
+set_property PACKAGE_PIN AR1 [get_ports pcie_rx_n[10]]
+set_property PACKAGE_PIN AT3 [get_ports pcie_rx_n[11]]
+set_property PACKAGE_PIN AU1 [get_ports pcie_rx_n[12]]
+set_property PACKAGE_PIN AV3 [get_ports pcie_rx_n[13]]
+set_property PACKAGE_PIN AW1 [get_ports pcie_rx_n[14]]
+set_property PACKAGE_PIN BA1 [get_ports pcie_rx_n[15]]
+set_property PACKAGE_PIN AG1 [get_ports pcie_rx_n[ 2]]
+set_property PACKAGE_PIN AH3 [get_ports pcie_rx_n[ 3]]
+set_property PACKAGE_PIN AJ1 [get_ports pcie_rx_n[ 4]]
+set_property PACKAGE_PIN AK3 [get_ports pcie_rx_n[ 5]]
+set_property PACKAGE_PIN AL1 [get_ports pcie_rx_n[ 6]]
+set_property PACKAGE_PIN AM3 [get_ports pcie_rx_n[ 7]]
+set_property PACKAGE_PIN AN1 [get_ports pcie_rx_n[ 8]]
+set_property PACKAGE_PIN AP3 [get_ports pcie_rx_n[ 9]]
+set_property PACKAGE_PIN AE2 [get_ports pcie_rx_p[ 0]]
+set_property PACKAGE_PIN AF4 [get_ports pcie_rx_p[ 1]]
+set_property PACKAGE_PIN AR2 [get_ports pcie_rx_p[10]]
+set_property PACKAGE_PIN AT4 [get_ports pcie_rx_p[11]]
+set_property PACKAGE_PIN AU2 [get_ports pcie_rx_p[12]]
+set_property PACKAGE_PIN AV4 [get_ports pcie_rx_p[13]]
+set_property PACKAGE_PIN AW2 [get_ports pcie_rx_p[14]]
+set_property PACKAGE_PIN BA2 [get_ports pcie_rx_p[15]]
+set_property PACKAGE_PIN AG2 [get_ports pcie_rx_p[ 2]]
+set_property PACKAGE_PIN AH4 [get_ports pcie_rx_p[ 3]]
+set_property PACKAGE_PIN AJ2 [get_ports pcie_rx_p[ 4]]
+set_property PACKAGE_PIN AK4 [get_ports pcie_rx_p[ 5]]
+set_property PACKAGE_PIN AL2 [get_ports pcie_rx_p[ 6]]
+set_property PACKAGE_PIN AM4 [get_ports pcie_rx_p[ 7]]
+set_property PACKAGE_PIN AN2 [get_ports pcie_rx_p[ 8]]
+set_property PACKAGE_PIN AP4 [get_ports pcie_rx_p[ 9]]
+set_property PACKAGE_PIN AD7 [get_ports pcie_tx_n[ 0]]
+set_property PACKAGE_PIN AE5 [get_ports pcie_tx_n[ 1]]
+set_property PACKAGE_PIN AP7 [get_ports pcie_tx_n[10]]
+set_property PACKAGE_PIN AR5 [get_ports pcie_tx_n[11]]
+set_property PACKAGE_PIN AT7 [get_ports pcie_tx_n[12]]
+set_property PACKAGE_PIN AU5 [get_ports pcie_tx_n[13]]
+set_property PACKAGE_PIN AW5 [get_ports pcie_tx_n[14]]
+set_property PACKAGE_PIN AY3 [get_ports pcie_tx_n[15]]
+set_property PACKAGE_PIN AF7 [get_ports pcie_tx_n[ 2]]
+set_property PACKAGE_PIN AG5 [get_ports pcie_tx_n[ 3]]
+set_property PACKAGE_PIN AH7 [get_ports pcie_tx_n[ 4]]
+set_property PACKAGE_PIN AJ5 [get_ports pcie_tx_n[ 5]]
+set_property PACKAGE_PIN AK7 [get_ports pcie_tx_n[ 6]]
+set_property PACKAGE_PIN AL5 [get_ports pcie_tx_n[ 7]]
+set_property PACKAGE_PIN AM7 [get_ports pcie_tx_n[ 8]]
+set_property PACKAGE_PIN AN5 [get_ports pcie_tx_n[ 9]]
+set_property PACKAGE_PIN AD8 [get_ports pcie_tx_p[ 0]]
+set_property PACKAGE_PIN AE6 [get_ports pcie_tx_p[ 1]]
+set_property PACKAGE_PIN AP8 [get_ports pcie_tx_p[10]]
+set_property PACKAGE_PIN AR6 [get_ports pcie_tx_p[11]]
 set_property PACKAGE_PIN AT8 [get_ports pcie_tx_p[12]]
 set_property PACKAGE_PIN AU6 [get_ports pcie_tx_p[13]]
-set_property PACKAGE_PIN AW6 [get_ports pcie_tx_p[14]]   
-set_property PACKAGE_PIN AY4 [get_ports pcie_tx_p[15]]   
-set_property PACKAGE_PIN AF8 [get_ports pcie_tx_p[2] ]   
-set_property PACKAGE_PIN AG6 [get_ports pcie_tx_p[3] ]   
-set_property PACKAGE_PIN AH8 [get_ports pcie_tx_p[4]  ]  
-set_property PACKAGE_PIN AJ6 [get_ports pcie_tx_p[5]  ]  
-set_property PACKAGE_PIN AK8 [get_ports pcie_tx_p[6]  ]  
-set_property PACKAGE_PIN AL6 [get_ports pcie_tx_p[7]  ]  
-set_property PACKAGE_PIN AM8 [get_ports pcie_tx_p[8]  ]  
-set_property PACKAGE_PIN AN6 [get_ports pcie_tx_p[9]  ]  
+set_property PACKAGE_PIN AW6 [get_ports pcie_tx_p[14]]
+set_property PACKAGE_PIN AY4 [get_ports pcie_tx_p[15]]
+set_property PACKAGE_PIN AF8 [get_ports pcie_tx_p[ 2]]
+set_property PACKAGE_PIN AG6 [get_ports pcie_tx_p[ 3]]
+set_property PACKAGE_PIN AH8 [get_ports pcie_tx_p[ 4]]
+set_property PACKAGE_PIN AJ6 [get_ports pcie_tx_p[ 5]]
+set_property PACKAGE_PIN AK8 [get_ports pcie_tx_p[ 6]]
+set_property PACKAGE_PIN AL6 [get_ports pcie_tx_p[ 7]]
+set_property PACKAGE_PIN AM8 [get_ports pcie_tx_p[ 8]]
+set_property PACKAGE_PIN AN6 [get_ports pcie_tx_p[ 9]]
 
 set_property -dict {LOC AH12 } [get_ports pcie_refclk_p] ;# MGTREFCLK0P_225 (for x16 or x8 bifurcated lanes 8-16)
 set_property -dict {LOC AH11 } [get_ports pcie_refclk_n] ;# MGTREFCLK0N_225 (for x16 or x8 bifurcated lanes 8-16)
