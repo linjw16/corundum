@@ -123,6 +123,7 @@ module fpga_core #
     // DMA interface configuration
     parameter DMA_LEN_WIDTH = 16,
     parameter DMA_TAG_WIDTH = 16,
+    parameter RAM_ADDR_WIDTH = $clog2(TX_RAM_SIZE > RX_RAM_SIZE ? TX_RAM_SIZE : RX_RAM_SIZE),
     parameter RAM_PIPELINE = 2,
 
     // PCIe interface configuration
@@ -747,7 +748,7 @@ generate
         assign qsfp_0_tx_axis_tvalid = axis_eth_tx_tvalid[QSFP_0_IND];
         assign axis_eth_tx_tready[QSFP_0_IND] = qsfp_0_tx_axis_tready;
         assign qsfp_0_tx_axis_tlast = axis_eth_tx_tlast[QSFP_0_IND];
-        assign qsfp_0_tx_axis_tuser = axis_eth_tx_tuser[QSFP_0_IND*17 +: 17];
+        assign qsfp_0_tx_axis_tuser = axis_eth_tx_tuser[QSFP_0_IND*AXIS_ETH_TX_USER_WIDTH +: AXIS_ETH_TX_USER_WIDTH];
 
         assign axis_eth_tx_ptp_ts[QSFP_0_IND*PTP_TS_WIDTH +: PTP_TS_WIDTH] = {qsfp_0_tx_ptp_ts, 16'd0};
         assign axis_eth_tx_ptp_ts_tag[QSFP_0_IND*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = qsfp_0_tx_ptp_ts_tag;
@@ -785,7 +786,7 @@ generate
         assign qsfp_1_tx_axis_tvalid = axis_eth_tx_tvalid[QSFP_1_IND];
         assign axis_eth_tx_tready[QSFP_1_IND] = qsfp_1_tx_axis_tready;
         assign qsfp_1_tx_axis_tlast = axis_eth_tx_tlast[QSFP_1_IND];
-        assign qsfp_1_tx_axis_tuser = axis_eth_tx_tuser[QSFP_1_IND*17 +: 17];
+        assign qsfp_1_tx_axis_tuser = axis_eth_tx_tuser[QSFP_1_IND*AXIS_ETH_TX_USER_WIDTH +: AXIS_ETH_TX_USER_WIDTH];
 
         assign axis_eth_tx_ptp_ts[QSFP_1_IND*PTP_TS_WIDTH +: PTP_TS_WIDTH] = {qsfp_1_tx_ptp_ts, 16'd0};
         assign axis_eth_tx_ptp_ts_tag[QSFP_1_IND*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = qsfp_1_tx_ptp_ts_tag;
@@ -896,10 +897,13 @@ mqnic_core_pcie_us #(
     .APP_AXIS_SYNC_ENABLE(APP_AXIS_SYNC_ENABLE),
     .APP_AXIS_IF_ENABLE(APP_AXIS_IF_ENABLE),
     .APP_STAT_ENABLE(APP_STAT_ENABLE),
+    .APP_GPIO_IN_WIDTH(32),
+    .APP_GPIO_OUT_WIDTH(32),
 
     // DMA interface configuration
     .DMA_LEN_WIDTH(DMA_LEN_WIDTH),
     .DMA_TAG_WIDTH(DMA_TAG_WIDTH),
+    .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
     .RAM_PIPELINE(RAM_PIPELINE),
 
     // PCIe interface configuration
@@ -1154,7 +1158,21 @@ core_inst (
     .s_axis_stat_tdata(0),
     .s_axis_stat_tid(0),
     .s_axis_stat_tvalid(1'b0),
-    .s_axis_stat_tready()
+    .s_axis_stat_tready(),
+
+    /*
+     * GPIO
+     */
+    .app_gpio_in(0),
+    .app_gpio_out(),
+
+    /*
+     * JTAG
+     */
+    .app_jtag_tdi(1'b0),
+    .app_jtag_tdo(),
+    .app_jtag_tms(1'b0),
+    .app_jtag_tck(1'b0)
 );
 
 endmodule

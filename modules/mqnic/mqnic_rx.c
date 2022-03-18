@@ -44,6 +44,8 @@ int mqnic_create_rx_ring(struct mqnic_if *interface, struct mqnic_ring **ring_pt
 	if (!ring)
 		return -ENOMEM;
 
+	*ring_ptr = ring;
+
 	ring->dev = interface->dev;
 	ring->interface = interface;
 
@@ -62,17 +64,16 @@ int mqnic_create_rx_ring(struct mqnic_if *interface, struct mqnic_ring **ring_pt
 	// deactivate queue
 	iowrite32(0, ring->hw_addr + MQNIC_QUEUE_ACTIVE_LOG_SIZE_REG);
 
-	*ring_ptr = ring;
 	return 0;
 }
 
 void mqnic_destroy_rx_ring(struct mqnic_ring **ring_ptr)
 {
 	struct mqnic_ring *ring = *ring_ptr;
-	*ring_ptr = NULL;
 
 	mqnic_free_rx_ring(ring);
 
+	*ring_ptr = NULL;
 	kfree(ring);
 }
 
@@ -363,7 +364,7 @@ int mqnic_process_rx_cq(struct mqnic_cq_ring *cq_ring, int napi_budget)
 		}
 
 		// RX hardware timestamp
-		if (interface->if_rx_features & MQNIC_IF_RX_FEATURE_PTP_TS)
+		if (interface->if_features & MQNIC_IF_FEATURE_PTP_TS)
 			skb_hwtstamps(skb)->hwtstamp = mqnic_read_cpl_ts(interface->mdev, rx_ring, cpl);
 
 		skb_record_rx_queue(skb, rx_ring->index);

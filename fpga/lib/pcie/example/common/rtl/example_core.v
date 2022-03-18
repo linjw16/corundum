@@ -45,18 +45,18 @@ module example_core #
     parameter DMA_LEN_WIDTH = 16,
     // DMA Tag field width
     parameter DMA_TAG_WIDTH = 8,
+    // RAM select width
+    parameter RAM_SEL_WIDTH = 2,
+    // RAM address width
+    parameter RAM_ADDR_WIDTH = 16,
     // RAM segment count
     parameter RAM_SEG_COUNT = 2,
     // RAM segment data width
     parameter RAM_SEG_DATA_WIDTH = 256*2/RAM_SEG_COUNT,
-    // RAM segment address width
-    parameter RAM_SEG_ADDR_WIDTH = 8,
     // RAM segment byte enable width
     parameter RAM_SEG_BE_WIDTH = RAM_SEG_DATA_WIDTH/8,
-    // RAM select width
-    parameter RAM_SEL_WIDTH = 2,
-    // RAM address width
-    parameter RAM_ADDR_WIDTH = RAM_SEG_ADDR_WIDTH+$clog2(RAM_SEG_COUNT)+$clog2(RAM_SEG_BE_WIDTH)
+    // RAM segment address width
+    parameter RAM_SEG_ADDR_WIDTH = RAM_ADDR_WIDTH-$clog2(RAM_SEG_COUNT*RAM_SEG_BE_WIDTH)
 )
 (
     input  wire                                         clk,
@@ -292,7 +292,7 @@ always @* begin
     dma_write_desc_ram_addr_next = dma_write_desc_ram_addr_reg;
     dma_write_desc_len_next = dma_write_desc_len_reg;
     dma_write_desc_tag_next = dma_write_desc_tag_reg;
-    dma_write_desc_valid_next = dma_write_desc_valid_reg && !m_axis_dma_read_desc_ready;
+    dma_write_desc_valid_next = dma_write_desc_valid_reg && !m_axis_dma_write_desc_ready;
 
     dma_write_desc_status_tag_next = dma_write_desc_status_tag_reg;
     dma_write_desc_status_error_next = dma_write_desc_status_error_reg;

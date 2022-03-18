@@ -364,6 +364,8 @@ int mqnic_create_netdev(struct mqnic_if *interface, struct net_device **ndev_ptr
 		return -ENOMEM;
 	}
 
+	*ndev_ptr = ndev;
+
 	SET_NETDEV_DEV(ndev, dev);
 	ndev->dev_port = dev_port;
 
@@ -381,8 +383,7 @@ int mqnic_create_netdev(struct mqnic_if *interface, struct net_device **ndev_ptr
 	priv->port_up = false;
 
 	// associate interface resources
-	priv->if_tx_features = interface->if_tx_features;
-	priv->if_rx_features = interface->if_rx_features;
+	priv->if_features = interface->if_features;
 
 	priv->event_queue_count = interface->event_queue_count;
 	for (k = 0; k < interface->event_queue_count; k++)
@@ -469,10 +470,10 @@ int mqnic_create_netdev(struct mqnic_if *interface, struct net_device **ndev_ptr
 	// set up features
 	ndev->hw_features = NETIF_F_SG;
 
-	if (priv->if_rx_features & MQNIC_IF_RX_FEATURE_CSUM)
+	if (priv->if_features & MQNIC_IF_FEATURE_RX_CSUM)
 		ndev->hw_features |= NETIF_F_RXCSUM;
 
-	if (priv->if_tx_features & MQNIC_IF_TX_FEATURE_CSUM)
+	if (priv->if_features & MQNIC_IF_FEATURE_TX_CSUM)
 		ndev->hw_features |= NETIF_F_HW_CSUM;
 
 	ndev->features = ndev->hw_features | NETIF_F_HIGHDMA;
@@ -494,8 +495,6 @@ int mqnic_create_netdev(struct mqnic_if *interface, struct net_device **ndev_ptr
 
 	priv->registered = 1;
 
-	*ndev_ptr = ndev;
-
 	return 0;
 
 fail:
@@ -511,8 +510,6 @@ void mqnic_destroy_netdev(struct net_device **ndev_ptr)
 
 	if (priv->registered)
 		unregister_netdev(ndev);
-
-	*ndev_ptr = NULL;
 
 	// free rings
 	for (k = 0; k < ARRAY_SIZE(priv->tx_ring); k++)
@@ -531,5 +528,6 @@ void mqnic_destroy_netdev(struct net_device **ndev_ptr)
 		if (priv->rx_cpl_ring[k])
 			mqnic_free_cq_ring(priv->rx_cpl_ring[k]);
 
+	*ndev_ptr = NULL;
 	free_netdev(ndev);
 }

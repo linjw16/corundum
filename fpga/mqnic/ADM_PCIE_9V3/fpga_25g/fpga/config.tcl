@@ -70,6 +70,7 @@ set pcie_revision_id [expr 0x00]
 set pcie_subsystem_vendor_id $board_vendor_id
 set pcie_subsystem_device_id $board_device_id
 
+# FW ID block
 dict set params FPGA_ID [format "32'h%08x" $fpga_id]
 dict set params FW_ID [format "32'h%08x" $fw_id]
 dict set params FW_VER [format "32'h%02x%02x%02x%02x" {*}[split $fw_ver .-] 0 0 0 0]
@@ -78,6 +79,15 @@ dict set params BOARD_VER [format "32'h%02x%02x%02x%02x" {*}[split $board_ver .-
 dict set params BUILD_DATE  "32'd${build_date}"
 dict set params GIT_HASH  "32'h${git_hash}"
 dict set params RELEASE_INFO  [format "32'h%08x" $release_info]
+
+# Transceiver configuration
+set eth_xcvr_freerun_freq {125}
+set eth_xcvr_line_rate {25.78125}
+set eth_xcvr_sec_line_rate {10.3125}
+set eth_xcvr_refclk_freq {161.1328125}
+set eth_xcvr_qpll_fracn [expr {int(fmod($eth_xcvr_line_rate*1000/2 / $eth_xcvr_refclk_freq, 1)*pow(2, 24))}]
+set eth_xcvr_sec_qpll_fracn [expr {int(fmod($eth_xcvr_sec_line_rate*1000/2 / $eth_xcvr_refclk_freq, 1)*pow(2, 24))}]
+set eth_xcvr_rx_eq_mode {DFE}
 
 # Structural configuration
 
@@ -165,6 +175,7 @@ dict set params APP_STAT_ENABLE "1"
 # DMA interface configuration
 dict set params DMA_LEN_WIDTH "16"
 dict set params DMA_TAG_WIDTH "16"
+dict set params RAM_ADDR_WIDTH [expr int(ceil(log(max([dict get $params TX_RAM_SIZE], [dict get $params RX_RAM_SIZE]))/log(2)))]
 dict set params RAM_PIPELINE "2"
 
 # PCIe interface configuration
@@ -185,6 +196,7 @@ dict set params AXIL_APP_CTRL_DATA_WIDTH [dict get $params AXIL_CTRL_DATA_WIDTH]
 dict set params AXIL_APP_CTRL_ADDR_WIDTH "24"
 
 # Ethernet interface configuration
+dict set params AXIS_ETH_SYNC_DATA_WIDTH_DOUBLE [expr max($eth_xcvr_line_rate, $eth_xcvr_sec_line_rate) > 16]
 dict set params AXIS_ETH_TX_PIPELINE "0"
 dict set params AXIS_ETH_TX_FIFO_PIPELINE "2"
 dict set params AXIS_ETH_TX_TS_PIPELINE "0"
@@ -229,12 +241,16 @@ proc configure_bar {pcie pf bar aperture} {
 
             puts "${pcie} PF${pf} BAR${bar}: aperture ${aperture} bits ($size $scale)"
 
-            set_property "CONFIG.pf${pf}_bar${bar}_enabled" {true} $pcie
-            set_property "CONFIG.pf${pf}_bar${bar}_type" {Memory} $pcie
-            set_property "CONFIG.pf${pf}_bar${bar}_64bit" {true} $pcie
-            set_property "CONFIG.pf${pf}_bar${bar}_prefetchable" {true} $pcie
-            set_property "CONFIG.pf${pf}_bar${bar}_scale" $scale $pcie
-            set_property "CONFIG.pf${pf}_bar${bar}_size" $size $pcie
+            set pcie_config [dict create]
+
+            dict set pcie_config "CONFIG.pf${pf}_bar${bar}_enabled" {true}
+            dict set pcie_config "CONFIG.pf${pf}_bar${bar}_type" {Memory}
+            dict set pcie_config "CONFIG.pf${pf}_bar${bar}_64bit" {true}
+            dict set pcie_config "CONFIG.pf${pf}_bar${bar}_prefetchable" {true}
+            dict set pcie_config "CONFIG.pf${pf}_bar${bar}_scale" $scale
+            dict set pcie_config "CONFIG.pf${pf}_bar${bar}_size" $size
+
+            set_property -dict $pcie_config $pcie
 
             return
         }
@@ -248,6 +264,29 @@ configure_bar $pcie 0 0 [dict get $params AXIL_CTRL_ADDR_WIDTH]
 
 # Application BAR (BAR 2)
 configure_bar $pcie 0 2 [expr [dict get $params APP_ENABLE] ? [dict get $params AXIL_APP_CTRL_ADDR_WIDTH] : 0]
+
+# Transceiver configuration
+set xcvr_config [dict create]
+
+dict set xcvr_config CONFIG.TX_LINE_RATE $eth_xcvr_line_rate
+dict set xcvr_config CONFIG.TX_QPLL_FRACN_NUMERATOR $eth_xcvr_qpll_fracn
+dict set xcvr_config CONFIG.TX_REFCLK_FREQUENCY $eth_xcvr_refclk_freq
+dict set xcvr_config CONFIG.RX_LINE_RATE $eth_xcvr_line_rate
+dict set xcvr_config CONFIG.RX_QPLL_FRACN_NUMERATOR $eth_xcvr_qpll_fracn
+dict set xcvr_config CONFIG.RX_REFCLK_FREQUENCY $eth_xcvr_refclk_freq
+dict set xcvr_config CONFIG.RX_EQ_MODE $eth_xcvr_rx_eq_mode
+if {$eth_xcvr_sec_line_rate != 0} {
+    dict set xcvr_config CONFIG.SECONDARY_QPLL_ENABLE true
+    dict set xcvr_config CONFIG.SECONDARY_QPLL_FRACN_NUMERATOR $eth_xcvr_sec_qpll_fracn
+    dict set xcvr_config CONFIG.SECONDARY_QPLL_LINE_RATE $eth_xcvr_sec_line_rate
+    dict set xcvr_config CONFIG.SECONDARY_QPLL_REFCLK_FREQUENCY $eth_xcvr_refclk_freq
+} else {
+    dict set xcvr_config CONFIG.SECONDARY_QPLL_ENABLE false
+}
+dict set xcvr_config CONFIG.FREERUN_FREQUENCY $eth_xcvr_freerun_freq
+
+set_property -dict $xcvr_config [get_ips eth_xcvr_gty_full]
+set_property -dict $xcvr_config [get_ips eth_xcvr_gty_channel]
 
 # apply parameters to top-level
 set param_list {}
