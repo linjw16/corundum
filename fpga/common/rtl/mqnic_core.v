@@ -121,18 +121,20 @@ module mqnic_core #
     parameter APP_AXIS_SYNC_ENABLE = 1,
     parameter APP_AXIS_IF_ENABLE = 1,
     parameter APP_STAT_ENABLE = 1,
+    parameter APP_GPIO_IN_WIDTH = 32,
+    parameter APP_GPIO_OUT_WIDTH = 32,
 
     // DMA interface configuration
     parameter DMA_ADDR_WIDTH = 64,
     parameter DMA_LEN_WIDTH = 16,
     parameter DMA_TAG_WIDTH = 16,
-    parameter RAM_SEG_COUNT = 2,
-    parameter RAM_SEG_DATA_WIDTH = 256*2/RAM_SEG_COUNT,
-    parameter RAM_SEG_ADDR_WIDTH = 12,
-    parameter RAM_SEG_BE_WIDTH = RAM_SEG_DATA_WIDTH/8,
     parameter IF_RAM_SEL_WIDTH = 1,
     parameter RAM_SEL_WIDTH = $clog2(IF_COUNT+(APP_ENABLE && APP_DMA_ENABLE ? 1 : 0))+IF_RAM_SEL_WIDTH+1,
-    parameter RAM_ADDR_WIDTH = RAM_SEG_ADDR_WIDTH+$clog2(RAM_SEG_COUNT)+$clog2(RAM_SEG_BE_WIDTH),
+    parameter RAM_ADDR_WIDTH = $clog2(TX_RAM_SIZE > RX_RAM_SIZE ? TX_RAM_SIZE : RX_RAM_SIZE),
+    parameter RAM_SEG_COUNT = 2,
+    parameter RAM_SEG_DATA_WIDTH = 256*2/RAM_SEG_COUNT,
+    parameter RAM_SEG_BE_WIDTH = RAM_SEG_DATA_WIDTH/8,
+    parameter RAM_SEG_ADDR_WIDTH = RAM_ADDR_WIDTH-$clog2(RAM_SEG_COUNT*RAM_SEG_BE_WIDTH),
     parameter RAM_PIPELINE = 2,
 
     parameter MSI_COUNT = 32,
@@ -370,7 +372,21 @@ module mqnic_core #
     input  wire [STAT_INC_WIDTH-1:0]                    s_axis_stat_tdata,
     input  wire [STAT_ID_WIDTH-1:0]                     s_axis_stat_tid,
     input  wire                                         s_axis_stat_tvalid,
-    output wire                                         s_axis_stat_tready
+    output wire                                         s_axis_stat_tready,
+
+    /*
+     * GPIO
+     */
+    input  wire [APP_GPIO_IN_WIDTH-1:0]                 app_gpio_in,
+    output wire [APP_GPIO_OUT_WIDTH-1:0]                app_gpio_out,
+
+    /*
+     * JTAG
+     */
+    input  wire                                         app_jtag_tdi,
+    output wire                                         app_jtag_tdo,
+    input  wire                                         app_jtag_tms,
+    input  wire                                         app_jtag_tck
 );
 
 parameter IF_COUNT_INT = IF_COUNT+(APP_ENABLE && APP_DMA_ENABLE ? 1 : 0);
@@ -1207,13 +1223,13 @@ wire [RAM_SEG_COUNT-1:0]                     data_dma_ram_rd_resp_ready;
 
 dma_if_mux #(
     .PORTS(2),
-    .SEG_COUNT(RAM_SEG_COUNT),
-    .SEG_DATA_WIDTH(RAM_SEG_DATA_WIDTH),
-    .SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
-    .SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
     .S_RAM_SEL_WIDTH(RAM_SEL_WIDTH-1),
     .M_RAM_SEL_WIDTH(RAM_SEL_WIDTH),
     .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
+    .SEG_COUNT(RAM_SEG_COUNT),
+    .SEG_DATA_WIDTH(RAM_SEG_DATA_WIDTH),
+    .SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
+    .SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
     .DMA_ADDR_WIDTH(DMA_ADDR_WIDTH),
     .LEN_WIDTH(DMA_LEN_WIDTH),
     .S_TAG_WIDTH(DMA_TAG_WIDTH-1),
@@ -1419,13 +1435,13 @@ if (IF_COUNT_INT > 1) begin : dma_if_mux
 
     dma_if_mux #(
         .PORTS(IF_COUNT_INT),
-        .SEG_COUNT(RAM_SEG_COUNT),
-        .SEG_DATA_WIDTH(RAM_SEG_DATA_WIDTH),
-        .SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
-        .SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
         .S_RAM_SEL_WIDTH(IF_RAM_SEL_WIDTH),
         .M_RAM_SEL_WIDTH(RAM_SEL_WIDTH-1),
         .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
+        .SEG_COUNT(RAM_SEG_COUNT),
+        .SEG_DATA_WIDTH(RAM_SEG_DATA_WIDTH),
+        .SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
+        .SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
         .DMA_ADDR_WIDTH(DMA_ADDR_WIDTH),
         .LEN_WIDTH(DMA_LEN_WIDTH),
         .S_TAG_WIDTH(IF_DMA_TAG_WIDTH),
@@ -1548,13 +1564,13 @@ if (IF_COUNT_INT > 1) begin : dma_if_mux
 
     dma_if_mux #(
         .PORTS(IF_COUNT_INT),
-        .SEG_COUNT(RAM_SEG_COUNT),
-        .SEG_DATA_WIDTH(RAM_SEG_DATA_WIDTH),
-        .SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
-        .SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
         .S_RAM_SEL_WIDTH(IF_RAM_SEL_WIDTH),
         .M_RAM_SEL_WIDTH(RAM_SEL_WIDTH-1),
         .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
+        .SEG_COUNT(RAM_SEG_COUNT),
+        .SEG_DATA_WIDTH(RAM_SEG_DATA_WIDTH),
+        .SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
+        .SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
         .DMA_ADDR_WIDTH(DMA_ADDR_WIDTH),
         .LEN_WIDTH(DMA_LEN_WIDTH),
         .S_TAG_WIDTH(IF_DMA_TAG_WIDTH),
@@ -2181,12 +2197,12 @@ generate
             .AXIL_DATA_WIDTH(AXIL_CTRL_DATA_WIDTH),
             .AXIL_ADDR_WIDTH(AXIL_IF_CTRL_ADDR_WIDTH),
             .AXIL_STRB_WIDTH(AXIL_CTRL_STRB_WIDTH),
-            .SEG_COUNT(RAM_SEG_COUNT),
-            .SEG_DATA_WIDTH(RAM_SEG_DATA_WIDTH),
-            .SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
-            .SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
             .RAM_SEL_WIDTH(IF_RAM_SEL_WIDTH),
             .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
+            .SEG_COUNT(RAM_SEG_COUNT),
+            .SEG_DATA_WIDTH(RAM_SEG_DATA_WIDTH),
+            .SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
+            .SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
             .RAM_PIPELINE(RAM_PIPELINE),
             .AXIS_DATA_WIDTH(AXIS_IF_DATA_WIDTH),
             .AXIS_KEEP_WIDTH(AXIS_IF_KEEP_WIDTH),
@@ -3020,6 +3036,13 @@ generate
             wire axis_tx_out_tlast;
             wire [AXIS_TX_USER_WIDTH-1:0] axis_tx_out_tuser;
 
+            wire [AXIS_DATA_WIDTH-1:0] axis_tx_l2_tdata;
+            wire [AXIS_KEEP_WIDTH-1:0] axis_tx_l2_tkeep;
+            wire axis_tx_l2_tvalid;
+            wire axis_tx_l2_tready;
+            wire axis_tx_l2_tlast;
+            wire [AXIS_TX_USER_WIDTH-1:0] axis_tx_l2_tuser;
+
             wire [AXIS_DATA_WIDTH-1:0] axis_tx_tdata;
             wire [AXIS_KEEP_WIDTH-1:0] axis_tx_tkeep;
             wire axis_tx_tvalid;
@@ -3166,12 +3189,12 @@ generate
                 assign app_s_axis_direct_tx_tlast[n*PORTS_PER_IF+m +: 1] = axis_tx_out_tlast;
                 assign app_s_axis_direct_tx_tuser[(n*PORTS_PER_IF+m)*AXIS_TX_USER_WIDTH +: AXIS_TX_USER_WIDTH] = axis_tx_out_tuser;
 
-                assign axis_tx_tdata = app_m_axis_direct_tx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH];
-                assign axis_tx_tkeep = app_m_axis_direct_tx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH];
-                assign axis_tx_tvalid = app_m_axis_direct_tx_tvalid[n*PORTS_PER_IF+m +: 1];
-                assign app_m_axis_direct_tx_tready[n*PORTS_PER_IF+m +: 1] = axis_tx_tready;
-                assign axis_tx_tlast = app_m_axis_direct_tx_tlast[n*PORTS_PER_IF+m +: 1];
-                assign axis_tx_tuser = app_m_axis_direct_tx_tuser[(n*PORTS_PER_IF+m)*AXIS_TX_USER_WIDTH +: AXIS_TX_USER_WIDTH];
+                assign axis_tx_l2_tdata = app_m_axis_direct_tx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH];
+                assign axis_tx_l2_tkeep = app_m_axis_direct_tx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH];
+                assign axis_tx_l2_tvalid = app_m_axis_direct_tx_tvalid[n*PORTS_PER_IF+m +: 1];
+                assign app_m_axis_direct_tx_tready[n*PORTS_PER_IF+m +: 1] = axis_tx_l2_tready;
+                assign axis_tx_l2_tlast = app_m_axis_direct_tx_tlast[n*PORTS_PER_IF+m +: 1];
+                assign axis_tx_l2_tuser = app_m_axis_direct_tx_tuser[(n*PORTS_PER_IF+m)*AXIS_TX_USER_WIDTH +: AXIS_TX_USER_WIDTH];
 
             end else begin
 
@@ -3183,14 +3206,44 @@ generate
 
                 assign app_m_axis_direct_tx_tready[n*PORTS_PER_IF+m +: 1] = 0;
 
-                assign axis_tx_tdata = axis_tx_out_tdata;
-                assign axis_tx_tkeep = axis_tx_out_tkeep;
-                assign axis_tx_tvalid = axis_tx_out_tvalid;
-                assign axis_tx_out_tready = axis_tx_tready;
-                assign axis_tx_tlast = axis_tx_out_tlast;
-                assign axis_tx_tuser = axis_tx_out_tuser;
+                assign axis_tx_l2_tdata = axis_tx_out_tdata;
+                assign axis_tx_l2_tkeep = axis_tx_out_tkeep;
+                assign axis_tx_l2_tvalid = axis_tx_out_tvalid;
+                assign axis_tx_out_tready = axis_tx_l2_tready;
+                assign axis_tx_l2_tlast = axis_tx_out_tlast;
+                assign axis_tx_l2_tuser = axis_tx_out_tuser;
 
             end
+
+            mqnic_l2_egress #(
+                .AXIS_DATA_WIDTH(AXIS_DATA_WIDTH),
+                .AXIS_KEEP_WIDTH(AXIS_KEEP_WIDTH),
+                .AXIS_USER_WIDTH(AXIS_TX_USER_WIDTH)
+            )
+            mqnic_l2_egress_inst (
+                .clk(port_tx_clk),
+                .rst(port_tx_rst),
+
+                /*
+                 * Transmit data input
+                 */
+                .s_axis_tdata(axis_tx_l2_tdata),
+                .s_axis_tkeep(axis_tx_l2_tkeep),
+                .s_axis_tvalid(axis_tx_l2_tvalid),
+                .s_axis_tready(axis_tx_l2_tready),
+                .s_axis_tlast(axis_tx_l2_tlast),
+                .s_axis_tuser(axis_tx_l2_tuser),
+
+                /*
+                 * Transmit data output
+                 */
+                .m_axis_tdata(axis_tx_tdata),
+                .m_axis_tkeep(axis_tx_tkeep),
+                .m_axis_tvalid(axis_tx_tvalid),
+                .m_axis_tready(axis_tx_tready),
+                .m_axis_tlast(axis_tx_tlast),
+                .m_axis_tuser(axis_tx_tuser)
+            );
 
             assign m_axis_tx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH] = axis_tx_tdata;
             assign m_axis_tx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH] = axis_tx_tkeep;
@@ -3206,6 +3259,13 @@ generate
             wire axis_rx_tready;
             wire axis_rx_tlast;
             wire [AXIS_RX_USER_WIDTH-1:0] axis_rx_tuser;
+
+            wire [AXIS_DATA_WIDTH-1:0] axis_rx_l2_tdata;
+            wire [AXIS_KEEP_WIDTH-1:0] axis_rx_l2_tkeep;
+            wire axis_rx_l2_tvalid;
+            wire axis_rx_l2_tready;
+            wire axis_rx_l2_tlast;
+            wire [AXIS_RX_USER_WIDTH-1:0] axis_rx_l2_tuser;
 
             wire [AXIS_DATA_WIDTH-1:0] axis_rx_in_tdata;
             wire [AXIS_KEEP_WIDTH-1:0] axis_rx_in_tkeep;
@@ -3242,14 +3302,45 @@ generate
             assign axis_rx_tlast = s_axis_rx_tlast[n*PORTS_PER_IF+m +: 1];
             assign axis_rx_tuser = s_axis_rx_tuser[(n*PORTS_PER_IF+m)*AXIS_RX_USER_WIDTH +: AXIS_RX_USER_WIDTH];
 
+            mqnic_l2_ingress #(
+                .AXIS_DATA_WIDTH(AXIS_DATA_WIDTH),
+                .AXIS_KEEP_WIDTH(AXIS_KEEP_WIDTH),
+                .AXIS_USER_WIDTH(AXIS_RX_USER_WIDTH),
+                .AXIS_USE_READY(AXIS_RX_USE_READY)
+            )
+            mqnic_l2_ingress_inst (
+                .clk(port_rx_clk),
+                .rst(port_rx_rst),
+
+                /*
+                 * Receive data input
+                 */
+                .s_axis_tdata(axis_rx_tdata),
+                .s_axis_tkeep(axis_rx_tkeep),
+                .s_axis_tvalid(axis_rx_tvalid),
+                .s_axis_tready(axis_rx_tready),
+                .s_axis_tlast(axis_rx_tlast),
+                .s_axis_tuser(axis_rx_tuser),
+
+                /*
+                 * Receive data output
+                 */
+                .m_axis_tdata(axis_rx_l2_tdata),
+                .m_axis_tkeep(axis_rx_l2_tkeep),
+                .m_axis_tvalid(axis_rx_l2_tvalid),
+                .m_axis_tready(axis_rx_l2_tready),
+                .m_axis_tlast(axis_rx_l2_tlast),
+                .m_axis_tuser(axis_rx_l2_tuser)
+            );
+
             if (APP_ENABLE && APP_AXIS_DIRECT_ENABLE) begin
 
-                assign app_s_axis_direct_rx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH] = axis_rx_tdata;
-                assign app_s_axis_direct_rx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH] = axis_rx_tkeep;
-                assign app_s_axis_direct_rx_tvalid[n*PORTS_PER_IF+m +: 1] = axis_rx_tvalid;
-                assign axis_rx_tready = app_s_axis_direct_rx_tready[n*PORTS_PER_IF+m +: 1];
-                assign app_s_axis_direct_rx_tlast[n*PORTS_PER_IF+m +: 1] = axis_rx_tlast;
-                assign app_s_axis_direct_rx_tuser[(n*PORTS_PER_IF+m)*AXIS_RX_USER_WIDTH +: AXIS_RX_USER_WIDTH] = axis_rx_tuser;
+                assign app_s_axis_direct_rx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH] = axis_rx_l2_tdata;
+                assign app_s_axis_direct_rx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH] = axis_rx_l2_tkeep;
+                assign app_s_axis_direct_rx_tvalid[n*PORTS_PER_IF+m +: 1] = axis_rx_l2_tvalid;
+                assign axis_rx_l2_tready = app_s_axis_direct_rx_tready[n*PORTS_PER_IF+m +: 1];
+                assign app_s_axis_direct_rx_tlast[n*PORTS_PER_IF+m +: 1] = axis_rx_l2_tlast;
+                assign app_s_axis_direct_rx_tuser[(n*PORTS_PER_IF+m)*AXIS_RX_USER_WIDTH +: AXIS_RX_USER_WIDTH] = axis_rx_l2_tuser;
 
                 assign axis_rx_in_tdata = app_m_axis_direct_rx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH];
                 assign axis_rx_in_tkeep = app_m_axis_direct_rx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH];
@@ -3268,12 +3359,12 @@ generate
 
                 assign app_m_axis_direct_rx_tready[n*PORTS_PER_IF+m +: 1] = 0;
 
-                assign axis_rx_in_tdata = axis_rx_tdata;
-                assign axis_rx_in_tkeep = axis_rx_tkeep;
-                assign axis_rx_in_tvalid = axis_rx_tvalid;
-                assign axis_rx_tready = axis_rx_in_tready;
-                assign axis_rx_in_tlast = axis_rx_tlast;
-                assign axis_rx_in_tuser = axis_rx_tuser;
+                assign axis_rx_in_tdata = axis_rx_l2_tdata;
+                assign axis_rx_in_tkeep = axis_rx_l2_tkeep;
+                assign axis_rx_in_tvalid = axis_rx_l2_tvalid;
+                assign axis_rx_l2_tready = axis_rx_in_tready;
+                assign axis_rx_in_tlast = axis_rx_l2_tlast;
+                assign axis_rx_in_tuser = axis_rx_l2_tuser;
 
             end
 
@@ -3807,7 +3898,21 @@ if (APP_ENABLE) begin : app
         .m_axis_stat_tdata(axis_app_stat_tdata),
         .m_axis_stat_tid(axis_app_stat_tid),
         .m_axis_stat_tvalid(axis_app_stat_tvalid),
-        .m_axis_stat_tready(axis_app_stat_tready)
+        .m_axis_stat_tready(axis_app_stat_tready),
+
+        /*
+         * GPIO
+         */
+        .gpio_in(app_gpio_in),
+        .gpio_out(app_gpio_out),
+
+        /*
+         * JTAG
+         */
+        .jtag_tdi(app_jtag_tdi),
+        .jtag_tdo(app_jtag_tdo),
+        .jtag_tms(app_jtag_tms),
+        .jtag_tck(app_jtag_tck)
     );
 
 end else begin
@@ -3946,6 +4051,10 @@ end else begin
     assign axis_app_stat_tdata = 0;
     assign axis_app_stat_tid = 0;
     assign axis_app_stat_tvalid = 1'b0;
+
+    assign app_gpio_out = 0;
+
+    assign app_jtag_tdo = app_jtag_tdi;
 
 end
 

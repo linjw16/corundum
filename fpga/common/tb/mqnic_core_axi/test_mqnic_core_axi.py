@@ -402,6 +402,8 @@ def test_mqnic_core_pcie_axi(request, if_count, ports_per_if, axi_data_width,
         os.path.join(rtl_dir, "mqnic_interface_rx.v"),
         os.path.join(rtl_dir, "mqnic_egress.v"),
         os.path.join(rtl_dir, "mqnic_ingress.v"),
+        os.path.join(rtl_dir, "mqnic_l2_egress.v"),
+        os.path.join(rtl_dir, "mqnic_l2_ingress.v"),
         os.path.join(rtl_dir, "mqnic_ptp.v"),
         os.path.join(rtl_dir, "mqnic_ptp_clock.v"),
         os.path.join(rtl_dir, "mqnic_ptp_perout.v"),
@@ -431,7 +433,6 @@ def test_mqnic_core_pcie_axi(request, if_count, ports_per_if, axi_data_width,
         os.path.join(eth_rtl_dir, "ptp_clock.v"),
         os.path.join(eth_rtl_dir, "ptp_clock_cdc.v"),
         os.path.join(eth_rtl_dir, "ptp_perout.v"),
-        os.path.join(eth_rtl_dir, "ptp_ts_extract.v"),
         os.path.join(axi_rtl_dir, "axil_crossbar.v"),
         os.path.join(axi_rtl_dir, "axil_crossbar_addr.v"),
         os.path.join(axi_rtl_dir, "axil_crossbar_rd.v"),
@@ -539,6 +540,7 @@ def test_mqnic_core_pcie_axi(request, if_count, ports_per_if, axi_data_width,
     # DMA interface configuration
     parameters['DMA_LEN_WIDTH'] = 16
     parameters['DMA_TAG_WIDTH'] = 16
+    parameters['RAM_ADDR_WIDTH'] = (max(parameters['TX_RAM_SIZE'], parameters['RX_RAM_SIZE'])-1).bit_length()
     parameters['RAM_PIPELINE'] = 2
     parameters['AXI_DMA_MAX_BURST_LEN'] = 16
     parameters['AXI_DMA_USE_ID'] = 1

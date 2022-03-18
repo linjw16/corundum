@@ -126,18 +126,18 @@ module mqnic_interface #
     parameter AXIL_ADDR_WIDTH = 16,
     // Width of AXI lite wstrb (width of data bus in words)
     parameter AXIL_STRB_WIDTH = (AXIL_DATA_WIDTH/8),
+    // DMA RAM segment select width
+    parameter RAM_SEL_WIDTH = 1,
+    // DMA RAM address width
+    parameter RAM_ADDR_WIDTH = 18,
     // DMA RAM segment count
     parameter SEG_COUNT = 2,
     // DMA RAM segment data width
     parameter SEG_DATA_WIDTH = 64,
-    // DMA RAM segment address width
-    parameter SEG_ADDR_WIDTH = 8,
     // DMA RAM segment byte enable width
     parameter SEG_BE_WIDTH = SEG_DATA_WIDTH/8,
-    // DMA RAM segment select width
-    parameter RAM_SEL_WIDTH = $clog2(PORTS),
-    // DMA RAM address width
-    parameter RAM_ADDR_WIDTH = SEG_ADDR_WIDTH+$clog2(SEG_COUNT)+$clog2(SEG_BE_WIDTH),
+    // DMA RAM segment address width
+    parameter SEG_ADDR_WIDTH = RAM_ADDR_WIDTH-$clog2(SEG_COUNT*SEG_BE_WIDTH),
     // DMA RAM pipeline stages
     parameter RAM_PIPELINE = 2,
     // Width of AXI stream interfaces in bits
@@ -939,11 +939,10 @@ always @(posedge clk) begin
         // write operation
         ctrl_reg_wr_ack_reg <= 1'b1;
         case ({ctrl_reg_wr_addr >> 2, 2'b00})
-            // Interface control (TX)
-            RBB+8'h14: tx_mtu_reg <= ctrl_reg_wr_data;                      // IF TX ctrl: TX MTU
-            // Interface control (RX)
-            RBB+8'h34: rx_mtu_reg <= ctrl_reg_wr_data;                      // IF RX ctrl: RX MTU
-            RBB+8'h38: rss_mask_reg <= ctrl_reg_wr_data;                    // IF RX ctrl: RSS mask
+            // Interface control
+            RBB+8'h18: tx_mtu_reg <= ctrl_reg_wr_data;                      // IF ctrl: TX MTU
+            RBB+8'h1C: rx_mtu_reg <= ctrl_reg_wr_data;                      // IF ctrl: RX MTU
+            RBB+8'h20: rss_mask_reg <= ctrl_reg_wr_data;                    // IF ctrl: RSS mask
             default: ctrl_reg_wr_ack_reg <= 1'b0;
         endcase
     end
@@ -952,31 +951,23 @@ always @(posedge clk) begin
         // read operation
         ctrl_reg_rd_ack_reg <= 1'b1;
         case ({ctrl_reg_rd_addr >> 2, 2'b00})
-            // Interface control (TX)
-            RBB+8'h00: ctrl_reg_rd_data_reg <= 32'h0000C001;                // IF TX ctrl: Type
-            RBB+8'h04: ctrl_reg_rd_data_reg <= 32'h00000100;                // IF TX ctrl: Version
-            RBB+8'h08: ctrl_reg_rd_data_reg <= RB_BASE_ADDR+8'h20;          // IF TX ctrl: Next header
+            // Interface control
+            RBB+8'h00: ctrl_reg_rd_data_reg <= 32'h0000C001;                // IF ctrl: Type
+            RBB+8'h04: ctrl_reg_rd_data_reg <= 32'h00000200;                // IF ctrl: Version
+            RBB+8'h08: ctrl_reg_rd_data_reg <= RB_BASE_ADDR+8'h40;          // IF ctrl: Next header
             RBB+8'h0C: begin
-                // IF TX ctrl: features
-                ctrl_reg_rd_data_reg[4] <= PTP_TS_ENABLE;
-                ctrl_reg_rd_data_reg[8] <= TX_CHECKSUM_ENABLE;
-            end
-            RBB+8'h10: ctrl_reg_rd_data_reg <= MAX_TX_SIZE;                 // IF TX ctrl: Max TX MTU
-            RBB+8'h14: ctrl_reg_rd_data_reg <= tx_mtu_reg;                  // IF TX ctrl: TX MTU
-            // Interface control (RX)
-            RBB+8'h20: ctrl_reg_rd_data_reg <= 32'h0000C002;                // IF RX ctrl: Type
-            RBB+8'h24: ctrl_reg_rd_data_reg <= 32'h00000100;                // IF RX ctrl: Version
-            RBB+8'h28: ctrl_reg_rd_data_reg <= RB_BASE_ADDR+8'h40;          // IF RX ctrl: Next header
-            RBB+8'h2C: begin
-                // IF RX ctrl: features
+                // IF ctrl: features
                 ctrl_reg_rd_data_reg[0] <= RX_RSS_ENABLE && RX_HASH_ENABLE;
                 ctrl_reg_rd_data_reg[4] <= PTP_TS_ENABLE;
-                ctrl_reg_rd_data_reg[8] <= RX_CHECKSUM_ENABLE;
-                ctrl_reg_rd_data_reg[9] <= RX_HASH_ENABLE;
+                ctrl_reg_rd_data_reg[8] <= TX_CHECKSUM_ENABLE;
+                ctrl_reg_rd_data_reg[9] <= RX_CHECKSUM_ENABLE;
+                ctrl_reg_rd_data_reg[10] <= RX_HASH_ENABLE;
             end
-            RBB+8'h30: ctrl_reg_rd_data_reg <= MAX_RX_SIZE;                 // IF RX ctrl: Max RX MTU
-            RBB+8'h34: ctrl_reg_rd_data_reg <= rx_mtu_reg;                  // IF RX ctrl: RX MTU
-            RBB+8'h38: ctrl_reg_rd_data_reg <= rss_mask_reg;                // IF RX ctrl: RSS mask
+            RBB+8'h10: ctrl_reg_rd_data_reg <= MAX_TX_SIZE;                 // IF ctrl: Max TX MTU
+            RBB+8'h14: ctrl_reg_rd_data_reg <= MAX_RX_SIZE;                 // IF ctrl: Max RX MTU
+            RBB+8'h18: ctrl_reg_rd_data_reg <= tx_mtu_reg;                  // IF ctrl: TX MTU
+            RBB+8'h1C: ctrl_reg_rd_data_reg <= rx_mtu_reg;                  // IF ctrl: RX MTU
+            RBB+8'h20: ctrl_reg_rd_data_reg <= rss_mask_reg;                // IF ctrl: RSS mask
             // Queue manager (Event)
             RBB+8'h40: ctrl_reg_rd_data_reg <= 32'h0000C010;                // Event QM: Type
             RBB+8'h44: ctrl_reg_rd_data_reg <= 32'h00000100;                // Event QM: Version
@@ -1591,11 +1582,11 @@ desc_op_mux_inst (
 desc_fetch #(
     .PORTS(2),
     .SELECT_WIDTH(1),
+    .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
     .SEG_COUNT(SEG_COUNT),
     .SEG_DATA_WIDTH(SEG_DATA_WIDTH),
-    .SEG_ADDR_WIDTH(SEG_ADDR_WIDTH),
     .SEG_BE_WIDTH(SEG_BE_WIDTH),
-    .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
+    .SEG_ADDR_WIDTH(SEG_ADDR_WIDTH),
     .RAM_PIPELINE(RAM_PIPELINE),
     .AXIS_DATA_WIDTH(AXIS_DESC_DATA_WIDTH),
     .AXIS_KEEP_WIDTH(AXIS_DESC_KEEP_WIDTH),
@@ -1766,12 +1757,12 @@ cpl_op_mux_inst (
 cpl_write #(
     .PORTS(3),
     .SELECT_WIDTH(2),
+    .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
     .SEG_COUNT(SEG_COUNT),
     .SEG_DATA_WIDTH(SEG_DATA_WIDTH),
-    .SEG_ADDR_WIDTH(SEG_ADDR_WIDTH),
     .SEG_BE_WIDTH(SEG_BE_WIDTH),
+    .SEG_ADDR_WIDTH(SEG_ADDR_WIDTH),
     .RAM_PIPELINE(RAM_PIPELINE),
-    .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
     .DMA_ADDR_WIDTH(DMA_ADDR_WIDTH),
     .DMA_LEN_WIDTH(DMA_LEN_WIDTH),
     .DMA_TAG_WIDTH(DMA_TAG_WIDTH),
@@ -2209,11 +2200,11 @@ mqnic_interface_tx #(
     .PTP_TS_WIDTH(PTP_TS_WIDTH),
     .PTP_TAG_WIDTH(PTP_TAG_WIDTH),
     .TX_CHECKSUM_ENABLE(TX_CHECKSUM_ENABLE),
+    .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
     .SEG_COUNT(SEG_COUNT),
     .SEG_DATA_WIDTH(SEG_DATA_WIDTH),
-    .SEG_ADDR_WIDTH(SEG_ADDR_WIDTH),
     .SEG_BE_WIDTH(SEG_BE_WIDTH),
-    .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
+    .SEG_ADDR_WIDTH(SEG_ADDR_WIDTH),
     .RAM_PIPELINE(RAM_PIPELINE),
     .AXIS_DATA_WIDTH(AXIS_DATA_WIDTH),
     .AXIS_KEEP_WIDTH(AXIS_KEEP_WIDTH),
@@ -2382,11 +2373,11 @@ mqnic_interface_rx #(
     .RX_RSS_ENABLE(RX_RSS_ENABLE),
     .RX_HASH_ENABLE(RX_HASH_ENABLE),
     .RX_CHECKSUM_ENABLE(RX_CHECKSUM_ENABLE),
+    .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
     .SEG_COUNT(SEG_COUNT),
     .SEG_DATA_WIDTH(SEG_DATA_WIDTH),
-    .SEG_ADDR_WIDTH(SEG_ADDR_WIDTH),
     .SEG_BE_WIDTH(SEG_BE_WIDTH),
-    .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
+    .SEG_ADDR_WIDTH(SEG_ADDR_WIDTH),
     .RAM_PIPELINE(RAM_PIPELINE),
     .AXIS_DATA_WIDTH(AXIS_DATA_WIDTH),
     .AXIS_KEEP_WIDTH(AXIS_KEEP_WIDTH),

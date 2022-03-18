@@ -152,26 +152,20 @@ MQNIC_RB_IF_REG_COUNT       = 0x10
 MQNIC_RB_IF_REG_STRIDE      = 0x14
 MQNIC_RB_IF_REG_CSR_OFFSET  = 0x18
 
-MQNIC_RB_IF_CTRL_TX_TYPE          = 0x0000C001
-MQNIC_RB_IF_CTRL_TX_VER           = 0x00000100
-MQNIC_RB_IF_CTRL_TX_REG_FEATURES  = 0x0C
-MQNIC_RB_IF_CTRL_TX_REG_MAX_MTU   = 0x10
-MQNIC_RB_IF_CTRL_TX_REG_MTU       = 0x14
+MQNIC_RB_IF_CTRL_TYPE            = 0x0000C001
+MQNIC_RB_IF_CTRL_VER             = 0x00000200
+MQNIC_RB_IF_CTRL_REG_FEATURES    = 0x0C
+MQNIC_RB_IF_CTRL_REG_MAX_TX_MTU  = 0x10
+MQNIC_RB_IF_CTRL_REG_MAX_RX_MTU  = 0x14
+MQNIC_RB_IF_CTRL_REG_TX_MTU      = 0x18
+MQNIC_RB_IF_CTRL_REG_RX_MTU      = 0x1C
+MQNIC_RB_IF_CTRL_REG_RSS_MASK    = 0x20
 
-MQNIC_IF_TX_FEATURE_PTP_TS  = (1 << 4)
-MQNIC_IF_TX_FEATURE_CSUM    = (1 << 8)
-
-MQNIC_RB_IF_CTRL_RX_TYPE          = 0x0000C002
-MQNIC_RB_IF_CTRL_RX_VER           = 0x00000100
-MQNIC_RB_IF_CTRL_RX_REG_FEATURES  = 0x0C
-MQNIC_RB_IF_CTRL_RX_REG_MAX_MTU   = 0x10
-MQNIC_RB_IF_CTRL_RX_REG_MTU       = 0x14
-MQNIC_RB_IF_CTRL_RX_REG_RSS_MASK  = 0x18
-
-MQNIC_IF_RX_FEATURE_RSS     = (1 << 0)
-MQNIC_IF_RX_FEATURE_PTP_TS  = (1 << 4)
-MQNIC_IF_RX_FEATURE_CSUM    = (1 << 8)
-MQNIC_IF_RX_FEATURE_HASH    = (1 << 9)
+MQNIC_IF_FEATURE_RSS      = (1 << 0)
+MQNIC_IF_FEATURE_PTP_TS   = (1 << 4)
+MQNIC_IF_FEATURE_TX_CSUM  = (1 << 8)
+MQNIC_IF_FEATURE_RX_CSUM  = (1 << 9)
+MQNIC_IF_FEATURE_RX_HASH  = (1 << 10)
 
 MQNIC_RB_EVENT_QM_TYPE        = 0x0000C010
 MQNIC_RB_EVENT_QM_VER         = 0x00000100
@@ -542,6 +536,8 @@ class TxRing:
         self.tail_ptr = 0
         self.clean_tail_ptr = 0
 
+        self.clean_event = Event()
+
         self.packets = 0
         self.bytes = 0
 
@@ -798,16 +794,14 @@ class Interface:
         self.port_up = False
 
         self.reg_blocks = RegBlockList()
-        self.if_ctrl_tx_rb = None
-        self.if_ctrl_rx_rb = None
+        self.if_ctrl_rb = None
         self.event_queue_rb = None
         self.tx_queue_rb = None
         self.tx_cpl_queue_rb = None
         self.rx_queue_rb = None
         self.rx_cpl_queue_rb = None
 
-        self.if_tx_features = None
-        self.if_rx_features = None
+        self.if_features = None
 
         self.max_tx_mtu = 0
         self.max_rx_mtu = 0
@@ -850,20 +844,14 @@ class Interface:
         # Enumerate registers
         await self.reg_blocks.enumerate_reg_blocks(self.hw_regs, self.driver.if_csr_offset)
 
-        self.if_ctrl_tx_rb = self.reg_blocks.find(MQNIC_RB_IF_CTRL_TX_TYPE, MQNIC_RB_IF_CTRL_TX_VER)
+        self.if_ctrl_rb = self.reg_blocks.find(MQNIC_RB_IF_CTRL_TYPE, MQNIC_RB_IF_CTRL_VER)
 
-        self.if_tx_features = await self.if_ctrl_tx_rb.read_dword(MQNIC_RB_IF_CTRL_TX_REG_FEATURES)
-        self.max_tx_mtu = await self.if_ctrl_tx_rb.read_dword(MQNIC_RB_IF_CTRL_TX_REG_MAX_MTU)
+        self.if_features = await self.if_ctrl_rb.read_dword(MQNIC_RB_IF_CTRL_REG_FEATURES)
+        self.max_tx_mtu = await self.if_ctrl_rb.read_dword(MQNIC_RB_IF_CTRL_REG_MAX_TX_MTU)
+        self.max_rx_mtu = await self.if_ctrl_rb.read_dword(MQNIC_RB_IF_CTRL_REG_MAX_RX_MTU)
 
-        self.log.info("IF TX features: 0x%08x", self.if_tx_features)
+        self.log.info("IF features: 0x%08x", self.if_features)
         self.log.info("Max TX MTU: %d", self.max_tx_mtu)
-
-        self.if_ctrl_rx_rb = self.reg_blocks.find(MQNIC_RB_IF_CTRL_RX_TYPE, MQNIC_RB_IF_CTRL_RX_VER)
-
-        self.if_rx_features = await self.if_ctrl_rx_rb.read_dword(MQNIC_RB_IF_CTRL_RX_REG_FEATURES)
-        self.max_rx_mtu = await self.if_ctrl_rx_rb.read_dword(MQNIC_RB_IF_CTRL_TX_REG_MAX_MTU)
-
-        self.log.info("IF RX features: 0x%08x", self.if_rx_features)
         self.log.info("Max RX MTU: %d", self.max_rx_mtu)
 
         await self.set_mtu(min(self.max_tx_mtu, self.max_rx_mtu, 9214))
@@ -1072,7 +1060,7 @@ class Interface:
 
         while (cq_ring.head_ptr != cq_tail_ptr):
             cpl_data = struct.unpack_from("<HHHxxQ", cq_ring.buf, cq_index*cq_ring.stride)
-            ring_index = cpl_data[1]
+            ring_index = cpl_data[1] & ring.size_mask
 
             self.log.info("CPL data: %s", cpl_data)
 
@@ -1101,6 +1089,8 @@ class Interface:
 
         ring.clean_tail_ptr = ring_clean_tail_ptr
 
+        ring.clean_event.set()
+
     async def process_rx_cq(self, cq_ring):
         self.log.info("Process RX CQ %d (interface %d)", cq_ring.ring_index, self.index)
 
@@ -1117,7 +1107,7 @@ class Interface:
 
         while (cq_ring.head_ptr != cq_tail_ptr):
             cpl_data = struct.unpack_from("<HHHxxLHH", cq_ring.buf, cq_index*cq_ring.stride)
-            ring_index = cpl_data[1]
+            ring_index = cpl_data[1] & ring.size_mask
 
             self.log.info("CPL data: %s", cpl_data)
 
@@ -1167,17 +1157,25 @@ class Interface:
         if not self.port_up:
             return
 
-        if isinstance(skb, Packet):
-            data = skb.data
-        else:
-            data = skb
+        data = bytes(skb)
 
-        data = data[:16384]  # TODO
-        ring_index = tx_ring  # TODO!
+        assert len(data) < self.max_tx_mtu
+
+        if tx_ring is not None:
+            ring_index = tx_ring
+        else:
+            ring_index = 0
 
         ring = self.tx_queues[ring_index]
 
-        tail_ptr = ring.tail_ptr
+        while True:
+            # check for space in ring
+            if ring.head_ptr - ring.clean_tail_ptr < ring.full_size:
+                break
+
+            # wait for space
+            ring.clean_event.clear()
+            await ring.clean_event.wait()
 
         index = ring.head_ptr & ring.size_mask
 
@@ -1186,6 +1184,7 @@ class Interface:
 
         pkt = self.driver.alloc_pkt()
 
+        assert not ring.tx_info[index]
         ring.tx_info[index] = pkt
 
         # put data in packet buffer
@@ -1214,11 +1213,11 @@ class Interface:
         await ring.write_head_ptr()
 
     async def set_mtu(self, mtu):
-        await self.if_ctrl_tx_rb.write_dword(MQNIC_RB_IF_CTRL_TX_REG_MTU, mtu)
-        await self.if_ctrl_rx_rb.write_dword(MQNIC_RB_IF_CTRL_RX_REG_MTU, mtu)
+        await self.if_ctrl_rb.write_dword(MQNIC_RB_IF_CTRL_REG_TX_MTU, mtu)
+        await self.if_ctrl_rb.write_dword(MQNIC_RB_IF_CTRL_REG_RX_MTU, mtu)
 
     async def set_rss_mask(self, mask):
-        await self.if_ctrl_rx_rb.write_dword(MQNIC_RB_IF_CTRL_RX_REG_RSS_MASK, mask)
+        await self.if_ctrl_rb.write_dword(MQNIC_RB_IF_CTRL_REG_RSS_MASK, mask)
 
     async def recv(self):
         if not self.pkt_rx_queue:

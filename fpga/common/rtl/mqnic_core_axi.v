@@ -121,6 +121,8 @@ module mqnic_core_axi #
     parameter APP_AXIS_SYNC_ENABLE = 1,
     parameter APP_AXIS_IF_ENABLE = 1,
     parameter APP_STAT_ENABLE = 1,
+    parameter APP_GPIO_IN_WIDTH = 32,
+    parameter APP_GPIO_OUT_WIDTH = 32,
 
     // AXI interface configuration (DMA)
     parameter AXI_DATA_WIDTH = 128,
@@ -131,9 +133,11 @@ module mqnic_core_axi #
     // DMA interface configuration
     parameter DMA_LEN_WIDTH = 16,
     parameter DMA_TAG_WIDTH = 16,
+    parameter RAM_ADDR_WIDTH = $clog2(TX_RAM_SIZE > RX_RAM_SIZE ? TX_RAM_SIZE : RX_RAM_SIZE),
     parameter RAM_PIPELINE = 2,
     parameter AXI_DMA_MAX_BURST_LEN = 256,
-    parameter AXI_DMA_USE_ID = 1,
+    parameter AXI_DMA_READ_USE_ID = 0,
+    parameter AXI_DMA_WRITE_USE_ID = 1,
     parameter AXI_DMA_READ_OP_TABLE_SIZE = 2**(AXI_ID_WIDTH),
     parameter AXI_DMA_WRITE_OP_TABLE_SIZE = 2**(AXI_ID_WIDTH),
 
@@ -171,7 +175,7 @@ module mqnic_core_axi #
     // Statistics counter subsystem
     parameter STAT_ENABLE = 1,
     parameter STAT_DMA_ENABLE = 1,
-    parameter STAT_PCIE_ENABLE = 1,
+    parameter STAT_AXI_ENABLE = 1,
     parameter STAT_INC_WIDTH = 24,
     parameter STAT_ID_WIDTH = 12
 )
@@ -360,18 +364,31 @@ module mqnic_core_axi #
     input  wire [STAT_INC_WIDTH-1:0]                  s_axis_stat_tdata,
     input  wire [STAT_ID_WIDTH-1:0]                   s_axis_stat_tid,
     input  wire                                       s_axis_stat_tvalid,
-    output wire                                       s_axis_stat_tready
+    output wire                                       s_axis_stat_tready,
+
+    /*
+     * GPIO
+     */
+    input  wire [APP_GPIO_IN_WIDTH-1:0]               app_gpio_in,
+    output wire [APP_GPIO_OUT_WIDTH-1:0]              app_gpio_out,
+
+    /*
+     * JTAG
+     */
+    input  wire                                       app_jtag_tdi,
+    output wire                                       app_jtag_tdo,
+    input  wire                                       app_jtag_tms,
+    input  wire                                       app_jtag_tck
 );
 
 parameter DMA_ADDR_WIDTH = AXI_ADDR_WIDTH;
 
-parameter RAM_SEG_COUNT = 2;
-parameter RAM_SEG_DATA_WIDTH = AXI_DATA_WIDTH*2/RAM_SEG_COUNT;
-parameter RAM_SEG_ADDR_WIDTH = 12;
-parameter RAM_SEG_BE_WIDTH = RAM_SEG_DATA_WIDTH/8;
 parameter IF_RAM_SEL_WIDTH = 1;
 parameter RAM_SEL_WIDTH = $clog2(IF_COUNT+(APP_ENABLE && APP_DMA_ENABLE ? 1 : 0))+IF_RAM_SEL_WIDTH+1;
-parameter RAM_ADDR_WIDTH = RAM_SEG_ADDR_WIDTH+$clog2(RAM_SEG_COUNT)+$clog2(RAM_SEG_BE_WIDTH);
+parameter RAM_SEG_COUNT = 2;
+parameter RAM_SEG_DATA_WIDTH = AXI_DATA_WIDTH*2/RAM_SEG_COUNT;
+parameter RAM_SEG_BE_WIDTH = RAM_SEG_DATA_WIDTH/8;
+parameter RAM_SEG_ADDR_WIDTH = RAM_ADDR_WIDTH-$clog2(RAM_SEG_COUNT*RAM_SEG_BE_WIDTH);
 
 // DMA connections
 wire [RAM_SEG_COUNT*RAM_SEL_WIDTH-1:0]       dma_ram_wr_cmd_sel;
@@ -432,7 +449,8 @@ dma_if_axi #(
     .TAG_WIDTH(DMA_TAG_WIDTH),
     .READ_OP_TABLE_SIZE(AXI_DMA_READ_OP_TABLE_SIZE),
     .WRITE_OP_TABLE_SIZE(AXI_DMA_WRITE_OP_TABLE_SIZE),
-    .USE_AXI_ID(AXI_DMA_USE_ID)
+    .READ_USE_AXI_ID(AXI_DMA_READ_USE_ID),
+    .WRITE_USE_AXI_ID(AXI_DMA_WRITE_USE_ID)
 )
 dma_if_axi_inst (
     .clk(clk),
@@ -867,7 +885,21 @@ core_inst (
     .s_axis_stat_tdata(s_axis_stat_tdata),
     .s_axis_stat_tid(s_axis_stat_tid),
     .s_axis_stat_tvalid(s_axis_stat_tvalid),
-    .s_axis_stat_tready(s_axis_stat_tready)
+    .s_axis_stat_tready(s_axis_stat_tready),
+
+    /*
+     * GPIO
+     */
+    .app_gpio_in(app_gpio_in),
+    .app_gpio_out(app_gpio_out),
+
+    /*
+     * JTAG
+     */
+    .app_jtag_tdi(app_jtag_tdi),
+    .app_jtag_tdo(app_jtag_tdo),
+    .app_jtag_tms(app_jtag_tms),
+    .app_jtag_tck(app_jtag_tck)
 );
 
 endmodule

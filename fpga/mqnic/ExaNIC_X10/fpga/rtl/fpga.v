@@ -114,6 +114,7 @@ module fpga #
     // DMA interface configuration
     parameter DMA_LEN_WIDTH = 16,
     parameter DMA_TAG_WIDTH = 16,
+    parameter RAM_ADDR_WIDTH = $clog2(TX_RAM_SIZE > RX_RAM_SIZE ? TX_RAM_SIZE : RX_RAM_SIZE),
     parameter RAM_PIPELINE = 2,
 
     // PCIe interface configuration
@@ -877,115 +878,125 @@ wire                         sfp_2_rx_rst_int;
 wire [XGMII_DATA_WIDTH-1:0]  sfp_2_rxd_int;
 wire [XGMII_CTRL_WIDTH-1:0]  sfp_2_rxc_int;
 
+wire        sfp_drp_clk = clk_125mhz_int;
+wire        sfp_drp_rst = rst_125mhz_int;
+wire [23:0] sfp_drp_addr;
+wire [15:0] sfp_drp_di;
+wire        sfp_drp_en;
+wire        sfp_drp_we;
+wire [15:0] sfp_drp_do;
+wire        sfp_drp_rdy;
+
 wire sfp_1_rx_block_lock;
 wire sfp_2_rx_block_lock;
 
+wire sfp_gtpowergood;
+
 wire sfp_mgt_refclk;
+wire sfp_mgt_refclk_int;
+wire sfp_mgt_refclk_bufg;
 
 IBUFDS_GTE3 ibufds_gte3_sfp_mgt_refclk_inst (
     .I     (sfp_mgt_refclk_p),
     .IB    (sfp_mgt_refclk_n),
     .CEB   (1'b0),
     .O     (sfp_mgt_refclk),
-    .ODIV2 ()
+    .ODIV2 (sfp_mgt_refclk_int)
 );
 
-wire sfp_qpll0lock;
-wire sfp_qpll0outclk;
-wire sfp_qpll0outrefclk;
-
-eth_xcvr_phy_wrapper #(
-    .HAS_COMMON(1)
-)
-sfp_1_phy_inst (
-    .xcvr_ctrl_clk(clk_125mhz_int),
-    .xcvr_ctrl_rst(rst_125mhz_int),
-
-    // Common
-    .xcvr_gtpowergood_out(),
-
-    // PLL out
-    .xcvr_gtrefclk00_in(sfp_mgt_refclk),
-    .xcvr_qpll0lock_out(sfp_qpll0lock),
-    .xcvr_qpll0outclk_out(sfp_qpll0outclk),
-    .xcvr_qpll0outrefclk_out(sfp_qpll0outrefclk),
-
-    // PLL in
-    .xcvr_qpll0lock_in(1'b0),
-    .xcvr_qpll0reset_out(),
-    .xcvr_qpll0clk_in(1'b0),
-    .xcvr_qpll0refclk_in(1'b0),
-
-    // Serial data
-    .xcvr_txp(sfp_1_tx_p),
-    .xcvr_txn(sfp_1_tx_n),
-    .xcvr_rxp(sfp_1_rx_p),
-    .xcvr_rxn(sfp_1_rx_n),
-
-    // PHY connections
-    .phy_tx_clk(sfp_1_tx_clk_int),
-    .phy_tx_rst(sfp_1_tx_rst_int),
-    .phy_xgmii_txd(sfp_1_txd_int),
-    .phy_xgmii_txc(sfp_1_txc_int),
-    .phy_rx_clk(sfp_1_rx_clk_int),
-    .phy_rx_rst(sfp_1_rx_rst_int),
-    .phy_xgmii_rxd(sfp_1_rxd_int),
-    .phy_xgmii_rxc(sfp_1_rxc_int),
-    .phy_tx_bad_block(),
-    .phy_rx_error_count(),
-    .phy_rx_bad_block(),
-    .phy_rx_sequence_error(),
-    .phy_rx_block_lock(sfp_1_rx_block_lock),
-    .phy_rx_high_ber(),
-    .phy_tx_prbs31_enable(),
-    .phy_rx_prbs31_enable()
+BUFG_GT bufg_gt_sfp_mgt_refclk_inst (
+    .CE      (sfp_gtpowergood),
+    .CEMASK  (1'b1),
+    .CLR     (1'b0),
+    .CLRMASK (1'b1),
+    .DIV     (3'd0),
+    .I       (sfp_mgt_refclk_int),
+    .O       (sfp_mgt_refclk_bufg)
 );
 
-eth_xcvr_phy_wrapper #(
-    .HAS_COMMON(0)
+wire sfp_rst;
+
+sync_reset #(
+    .N(4)
 )
-sfp_2_phy_inst (
+sfp_sync_reset_inst (
+    .clk(sfp_mgt_refclk_bufg),
+    .rst(rst_125mhz_int),
+    .out(sfp_rst)
+);
+
+eth_xcvr_phy_10g_gty_quad_wrapper #(
+    .COUNT(2),
+    .GT_GTH(1),
+    .GT_1_TX_POLARITY(1'b1),
+    .GT_2_TX_POLARITY(1'b1)
+)
+sfp_phy_quad_inst (
     .xcvr_ctrl_clk(clk_125mhz_int),
-    .xcvr_ctrl_rst(rst_125mhz_int),
+    .xcvr_ctrl_rst(sfp_rst),
 
-    // Common
-    .xcvr_gtpowergood_out(),
+    /*
+     * Common
+     */
+    .xcvr_gtpowergood_out(sfp_gtpowergood),
+    .xcvr_ref_clk(sfp_mgt_refclk),
 
-    // PLL out
-    .xcvr_gtrefclk00_in(1'b0),
-    .xcvr_qpll0lock_out(),
-    .xcvr_qpll0outclk_out(),
-    .xcvr_qpll0outrefclk_out(),
+    /*
+     * DRP
+     */
+    .drp_clk(sfp_drp_clk),
+    .drp_rst(sfp_drp_rst),
+    .drp_addr(sfp_drp_addr),
+    .drp_di(sfp_drp_di),
+    .drp_en(sfp_drp_en),
+    .drp_we(sfp_drp_we),
+    .drp_do(sfp_drp_do),
+    .drp_rdy(sfp_drp_rdy),
 
-    // PLL in
-    .xcvr_qpll0lock_in(sfp_qpll0lock),
-    .xcvr_qpll0reset_out(),
-    .xcvr_qpll0clk_in(sfp_qpll0outclk),
-    .xcvr_qpll0refclk_in(sfp_qpll0outrefclk),
+    /*
+     * Serial data
+     */
+    .xcvr_txp({sfp_2_tx_p, sfp_1_tx_p}),
+    .xcvr_txn({sfp_2_tx_n, sfp_1_tx_n}),
+    .xcvr_rxp({sfp_2_rx_p, sfp_1_rx_p}),
+    .xcvr_rxn({sfp_2_rx_n, sfp_1_rx_n}),
 
-    // Serial data
-    .xcvr_txp(sfp_2_tx_p),
-    .xcvr_txn(sfp_2_tx_n),
-    .xcvr_rxp(sfp_2_rx_p),
-    .xcvr_rxn(sfp_2_rx_n),
+    /*
+     * PHY connections
+     */
+    .phy_1_tx_clk(sfp_1_tx_clk_int),
+    .phy_1_tx_rst(sfp_1_tx_rst_int),
+    .phy_1_xgmii_txd(sfp_1_txd_int),
+    .phy_1_xgmii_txc(sfp_1_txc_int),
+    .phy_1_rx_clk(sfp_1_rx_clk_int),
+    .phy_1_rx_rst(sfp_1_rx_rst_int),
+    .phy_1_xgmii_rxd(sfp_1_rxd_int),
+    .phy_1_xgmii_rxc(sfp_1_rxc_int),
+    .phy_1_tx_bad_block(),
+    .phy_1_rx_error_count(),
+    .phy_1_rx_bad_block(),
+    .phy_1_rx_sequence_error(),
+    .phy_1_rx_block_lock(sfp_1_rx_block_lock),
+    .phy_1_rx_high_ber(),
+    .phy_1_tx_prbs31_enable(1'b0),
+    .phy_1_rx_prbs31_enable(1'b0),
 
-    // PHY connections
-    .phy_tx_clk(sfp_2_tx_clk_int),
-    .phy_tx_rst(sfp_2_tx_rst_int),
-    .phy_xgmii_txd(sfp_2_txd_int),
-    .phy_xgmii_txc(sfp_2_txc_int),
-    .phy_rx_clk(sfp_2_rx_clk_int),
-    .phy_rx_rst(sfp_2_rx_rst_int),
-    .phy_xgmii_rxd(sfp_2_rxd_int),
-    .phy_xgmii_rxc(sfp_2_rxc_int),
-    .phy_tx_bad_block(),
-    .phy_rx_error_count(),
-    .phy_rx_bad_block(),
-    .phy_rx_sequence_error(),
-    .phy_rx_block_lock(sfp_2_rx_block_lock),
-    .phy_rx_high_ber(),
-    .phy_tx_prbs31_enable(),
-    .phy_rx_prbs31_enable()
+    .phy_2_tx_clk(sfp_2_tx_clk_int),
+    .phy_2_tx_rst(sfp_2_tx_rst_int),
+    .phy_2_xgmii_txd(sfp_2_txd_int),
+    .phy_2_xgmii_txc(sfp_2_txc_int),
+    .phy_2_rx_clk(sfp_2_rx_clk_int),
+    .phy_2_rx_rst(sfp_2_rx_rst_int),
+    .phy_2_xgmii_rxd(sfp_2_rxd_int),
+    .phy_2_xgmii_rxc(sfp_2_rxc_int),
+    .phy_2_tx_bad_block(),
+    .phy_2_rx_error_count(),
+    .phy_2_rx_bad_block(),
+    .phy_2_rx_sequence_error(),
+    .phy_2_rx_block_lock(sfp_2_rx_block_lock),
+    .phy_2_rx_high_ber(),
+    .phy_2_tx_prbs31_enable(1'b0),
+    .phy_2_rx_prbs31_enable(1'b0)
 );
 
 assign sfp_1_led[0] = sfp_1_rx_block_lock;
@@ -1074,6 +1085,7 @@ fpga_core #(
     // DMA interface configuration
     .DMA_LEN_WIDTH(DMA_LEN_WIDTH),
     .DMA_TAG_WIDTH(DMA_TAG_WIDTH),
+    .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
     .RAM_PIPELINE(RAM_PIPELINE),
 
     // PCIe interface configuration
@@ -1239,6 +1251,15 @@ core_inst (
     .sfp_2_rx_rst(sfp_2_rx_rst_int),
     .sfp_2_rxd(sfp_2_rxd_int),
     .sfp_2_rxc(sfp_2_rxc_int),
+
+    .sfp_drp_clk(sfp_drp_clk),
+    .sfp_drp_rst(sfp_drp_rst),
+    .sfp_drp_addr(sfp_drp_addr),
+    .sfp_drp_di(sfp_drp_di),
+    .sfp_drp_en(sfp_drp_en),
+    .sfp_drp_we(sfp_drp_we),
+    .sfp_drp_do(sfp_drp_do),
+    .sfp_drp_rdy(sfp_drp_rdy),
 
     .sfp_1_tx_disable(sfp_1_tx_disable),
     .sfp_2_tx_disable(sfp_2_tx_disable),

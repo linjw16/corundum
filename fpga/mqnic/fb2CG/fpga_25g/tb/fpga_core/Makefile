@@ -48,6 +48,8 @@ VERILOG_SOURCES += ../../rtl/common/mqnic_interface_tx.v
 VERILOG_SOURCES += ../../rtl/common/mqnic_interface_rx.v
 VERILOG_SOURCES += ../../rtl/common/mqnic_egress.v
 VERILOG_SOURCES += ../../rtl/common/mqnic_ingress.v
+VERILOG_SOURCES += ../../rtl/common/mqnic_l2_egress.v
+VERILOG_SOURCES += ../../rtl/common/mqnic_l2_ingress.v
 VERILOG_SOURCES += ../../rtl/common/mqnic_ptp.v
 VERILOG_SOURCES += ../../rtl/common/mqnic_ptp_clock.v
 VERILOG_SOURCES += ../../rtl/common/mqnic_ptp_perout.v
@@ -66,6 +68,7 @@ VERILOG_SOURCES += ../../rtl/common/rx_engine.v
 VERILOG_SOURCES += ../../rtl/common/tx_checksum.v
 VERILOG_SOURCES += ../../rtl/common/rx_hash.v
 VERILOG_SOURCES += ../../rtl/common/rx_checksum.v
+VERILOG_SOURCES += ../../rtl/common/rb_drp.v
 VERILOG_SOURCES += ../../rtl/common/stats_counter.v
 VERILOG_SOURCES += ../../rtl/common/stats_collect.v
 VERILOG_SOURCES += ../../rtl/common/stats_pcie_if.v
@@ -84,7 +87,6 @@ VERILOG_SOURCES += ../../lib/eth/rtl/lfsr.v
 VERILOG_SOURCES += ../../lib/eth/rtl/ptp_clock.v
 VERILOG_SOURCES += ../../lib/eth/rtl/ptp_clock_cdc.v
 VERILOG_SOURCES += ../../lib/eth/rtl/ptp_perout.v
-VERILOG_SOURCES += ../../lib/eth/rtl/ptp_ts_extract.v
 VERILOG_SOURCES += ../../lib/axi/rtl/axil_interconnect.v
 VERILOG_SOURCES += ../../lib/axi/rtl/axil_crossbar.v
 VERILOG_SOURCES += ../../lib/axi/rtl/axil_crossbar_addr.v
@@ -196,6 +198,7 @@ export PARAM_APP_STAT_ENABLE ?= 1
 # DMA interface configuration
 export PARAM_DMA_LEN_WIDTH ?= 16
 export PARAM_DMA_TAG_WIDTH ?= 16
+export PARAM_RAM_ADDR_WIDTH ?= $(shell python -c "print((max($(PARAM_TX_RAM_SIZE), $(PARAM_RX_RAM_SIZE))-1).bit_length())")
 export PARAM_RAM_PIPELINE ?= 2
 
 # PCIe interface configuration
@@ -281,6 +284,7 @@ ifeq ($(SIM), icarus)
 	COMPILE_ARGS += -P $(TOPLEVEL).APP_STAT_ENABLE=$(PARAM_APP_STAT_ENABLE)
 	COMPILE_ARGS += -P $(TOPLEVEL).DMA_LEN_WIDTH=$(PARAM_DMA_LEN_WIDTH)
 	COMPILE_ARGS += -P $(TOPLEVEL).DMA_TAG_WIDTH=$(PARAM_DMA_TAG_WIDTH)
+	COMPILE_ARGS += -P $(TOPLEVEL).RAM_ADDR_WIDTH=$(PARAM_RAM_ADDR_WIDTH)
 	COMPILE_ARGS += -P $(TOPLEVEL).RAM_PIPELINE=$(PARAM_RAM_PIPELINE)
 	COMPILE_ARGS += -P $(TOPLEVEL).AXIS_PCIE_DATA_WIDTH=$(PARAM_AXIS_PCIE_DATA_WIDTH)
 	COMPILE_ARGS += -P $(TOPLEVEL).PF_COUNT=$(PARAM_PF_COUNT)
@@ -360,6 +364,7 @@ else ifeq ($(SIM), verilator)
 	COMPILE_ARGS += -GAPP_STAT_ENABLE=$(PARAM_APP_STAT_ENABLE)
 	COMPILE_ARGS += -GDMA_LEN_WIDTH=$(PARAM_DMA_LEN_WIDTH)
 	COMPILE_ARGS += -GDMA_TAG_WIDTH=$(PARAM_DMA_TAG_WIDTH)
+	COMPILE_ARGS += -GRAM_ADDR_WIDTH=$(PARAM_RAM_ADDR_WIDTH)
 	COMPILE_ARGS += -GRAM_PIPELINE=$(PARAM_RAM_PIPELINE)
 	COMPILE_ARGS += -GAXIS_PCIE_DATA_WIDTH=$(PARAM_AXIS_PCIE_DATA_WIDTH)
 	COMPILE_ARGS += -GPF_COUNT=$(PARAM_PF_COUNT)

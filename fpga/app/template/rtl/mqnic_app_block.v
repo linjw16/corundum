@@ -68,17 +68,19 @@ module mqnic_app_block #
     parameter APP_AXIS_SYNC_ENABLE = 1,
     parameter APP_AXIS_IF_ENABLE = 1,
     parameter APP_STAT_ENABLE = 1,
+    parameter APP_GPIO_IN_WIDTH = 32,
+    parameter APP_GPIO_OUT_WIDTH = 32,
 
     // DMA interface configuration
     parameter DMA_ADDR_WIDTH = 64,
     parameter DMA_LEN_WIDTH = 16,
     parameter DMA_TAG_WIDTH = 16,
+    parameter RAM_SEL_WIDTH = 4,
+    parameter RAM_ADDR_WIDTH = 16,
     parameter RAM_SEG_COUNT = 2,
     parameter RAM_SEG_DATA_WIDTH = 256*2/RAM_SEG_COUNT,
-    parameter RAM_SEG_ADDR_WIDTH = 12,
     parameter RAM_SEG_BE_WIDTH = RAM_SEG_DATA_WIDTH/8,
-    parameter RAM_SEL_WIDTH = 4,
-    parameter RAM_ADDR_WIDTH = RAM_SEG_ADDR_WIDTH+$clog2(RAM_SEG_COUNT)+$clog2(RAM_SEG_BE_WIDTH),
+    parameter RAM_SEG_ADDR_WIDTH = RAM_ADDR_WIDTH-$clog2(RAM_SEG_COUNT*RAM_SEG_BE_WIDTH),
     parameter RAM_PIPELINE = 2,
 
     // AXI lite interface (application control from host)
@@ -431,7 +433,21 @@ module mqnic_app_block #
     output wire [STAT_INC_WIDTH-1:0]                      m_axis_stat_tdata,
     output wire [STAT_ID_WIDTH-1:0]                       m_axis_stat_tid,
     output wire                                           m_axis_stat_tvalid,
-    input  wire                                           m_axis_stat_tready
+    input  wire                                           m_axis_stat_tready,
+
+    /*
+     * GPIO
+     */
+    input  wire [APP_GPIO_IN_WIDTH-1:0]                   gpio_in,
+    output wire [APP_GPIO_OUT_WIDTH-1:0]                  gpio_out,
+
+    /*
+     * JTAG
+     */
+    input  wire                                           jtag_tdi,
+    output wire                                           jtag_tdo,
+    input  wire                                           jtag_tms,
+    input  wire                                           jtag_tck
 );
 
 /*
@@ -603,6 +619,16 @@ assign data_dma_ram_rd_resp_valid = data_dma_ram_rd_cmd_valid;
 assign m_axis_stat_tdata = 0;
 assign m_axis_stat_tid = 0;
 assign m_axis_stat_tvalid = 1'b0;
+
+/*
+ * GPIO
+ */
+assign gpio_out = 0;
+
+/*
+ * JTAG
+ */
+assign jtag_tdo = jtag_tdi;
 
 endmodule
 
