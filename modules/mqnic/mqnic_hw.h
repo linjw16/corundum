@@ -67,6 +67,7 @@
 #define MQNIC_BOARD_ID_EXANIC_X10    0x1ce40003
 #define MQNIC_BOARD_ID_EXANIC_X25    0x1ce40009
 #define MQNIC_BOARD_ID_ADM_PCIE_9V3  0x41449003
+#define MQNIC_BOARD_ID_F1000         0x10ee9013
 
 // Register blocks
 #define MQNIC_RB_REG_TYPE      0x00
