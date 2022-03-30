@@ -1,0 +1,39 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1647482864" />
+    <testcase name="run_test_001" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0.34610700607299805" sim_time_ns="5940.001" ratio_time="17162.325222469448" />
+    <testcase name="run_test_002" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0.2647228240966797" sim_time_ns="5950.001" ratio_time="22476.343021435106" />
+    <testcase name="run_test_003" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0.25569987297058105" sim_time_ns="5950.001" ratio_time="23269.471865105555" />
+    <testcase name="run_test_004" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0.2549254894256592" sim_time_ns="5950.001" ratio_time="23340.157209878093" />
+    <testcase name="run_test_005" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0.7999684810638428" sim_time_ns="23530.000999999997" ratio_time="29413.660109093908" />
+    <testcase name="run_test_006" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0.7906782627105713" sim_time_ns="23530.000999999997" ratio_time="29759.26126935044" />
+    <testcase name="run_test_007" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0.8449506759643555" sim_time_ns="23530.001000000004" ratio_time="27847.780550201755" />
+    <testcase name="run_test_008" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="367.9899368286133" sim_time_ns="21960.0" ratio_time="59.675544905532554">
+      <failure />
+    </testcase>
+    <testcase name="run_test_009" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0" sim_time_ns="0" ratio_time="nan">
+      <failure />
+    </testcase>
+    <testcase name="run_test_010" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0" sim_time_ns="0" ratio_time="nan">
+      <failure />
+    </testcase>
+    <testcase name="run_test_011" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0" sim_time_ns="0" ratio_time="nan">
+      <failure />
+    </testcase>
+    <testcase name="run_test_012" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0" sim_time_ns="0" ratio_time="nan">
+      <failure />
+    </testcase>
+    <testcase name="run_test_013" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0" sim_time_ns="0" ratio_time="nan">
+      <failure />
+    </testcase>
+    <testcase name="run_test_014" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0" sim_time_ns="0" ratio_time="nan">
+      <failure />
+    </testcase>
+    <testcase name="run_test_015" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0" sim_time_ns="0" ratio_time="nan">
+      <failure />
+    </testcase>
+    <testcase name="run_test_016" classname="test_axis_demux" file="/usr/local/lib/python3.8/dist-packages/cocotb/regression.py" lineno="621" time="0" sim_time_ns="0" ratio_time="nan">
+      <failure />
+    </testcase>
+  </testsuite>
+</testsuites>
