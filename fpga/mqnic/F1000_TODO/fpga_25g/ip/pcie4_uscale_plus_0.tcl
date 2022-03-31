@@ -1,5 +1,6 @@
-# filename: ./ip/pcie4_uscale_plus_0.tcl  		TODO
+
 create_ip -name pcie4_uscale_plus -vendor xilinx.com -library ip -module_name pcie4_uscale_plus_0
+
 set_property -dict [list \
     CONFIG.PL_LINK_CAP_MAX_LINK_SPEED {8.0_GT/s} \
     CONFIG.PL_LINK_CAP_MAX_LINK_WIDTH {X16} \
@@ -10,8 +11,8 @@ set_property -dict [list \
     CONFIG.PF0_CLASS_CODE {020000} \
     CONFIG.PF0_DEVICE_ID {1001} \
     CONFIG.PF0_MSI_CAP_MULTIMSGCAP {32_vectors} \
-    CONFIG.PF0_SUBSYSTEM_ID {1001} \
-    CONFIG.PF0_SUBSYSTEM_VENDOR_ID {1234} \
+    CONFIG.PF0_SUBSYSTEM_ID {a00e} \
+    CONFIG.PF0_SUBSYSTEM_VENDOR_ID {1c2c} \
     CONFIG.pf0_bar0_64bit {true} \
     CONFIG.pf0_bar0_prefetchable {true} \
     CONFIG.pf0_bar0_scale {Megabytes} \
