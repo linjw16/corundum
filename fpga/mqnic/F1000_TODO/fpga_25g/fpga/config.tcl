@@ -54,11 +54,11 @@ if { ! [regsub {^.*(\d+\.\d+\.\d+([\.-]\d+)?).*$} $git_tag {\1} tag_ver ] } {
 puts "Tag version: ${tag_ver}"
 
 # FW and board IDs
-set fpga_id [expr 0x4A56093]
+set fpga_id [expr 0x4758093]
 set fw_id [expr 0x00000000]
 set fw_ver $tag_ver
-set board_vendor_id [expr 0x1c2c]
-set board_device_id [expr 0xa00e]
+set board_vendor_id [expr 0x10ee]
+set board_device_id [expr 0x9013]
 set board_ver 1.0
 set release_info [expr 0x00000000]
 
@@ -84,7 +84,7 @@ dict set params RELEASE_INFO  [format "32'h%08x" $release_info]
 set eth_xcvr_freerun_freq {125}
 set eth_xcvr_line_rate {25.78125}
 set eth_xcvr_sec_line_rate {10.3125}
-set eth_xcvr_refclk_freq {161.1328125}
+set eth_xcvr_refclk_freq {322.265625}
 set eth_xcvr_qpll_fracn [expr {int(fmod($eth_xcvr_line_rate*1000/2 / $eth_xcvr_refclk_freq, 1)*pow(2, 24))}]
 set eth_xcvr_sec_qpll_fracn [expr {int(fmod($eth_xcvr_sec_line_rate*1000/2 / $eth_xcvr_refclk_freq, 1)*pow(2, 24))}]
 set eth_xcvr_rx_eq_mode {DFE}
@@ -118,7 +118,8 @@ dict set params IF_COUNT "8"
 dict set params PORTS_PER_IF "1"
 
 # PTP configuration
-dict set params PTP_PEROUT_ENABLE "1"
+# linjw: origin 1
+dict set params PTP_PEROUT_ENABLE "0"
 dict set params PTP_PEROUT_COUNT "1"
 
 # Queue manager configuration (interface)
