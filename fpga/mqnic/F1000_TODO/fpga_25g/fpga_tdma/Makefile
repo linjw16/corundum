@@ -3,11 +3,9 @@
 FPGA_PART = xczu19eg-ffvc1760-2-e
 FPGA_TOP = fpga
 FPGA_ARCH = zynquplus
-
 # Files for synthesis
 SYN_FILES = rtl/fpga.v
 SYN_FILES += rtl/fpga_core.v
-SYN_FILES += rtl/eth_xcvr_phy_wrapper.v
 SYN_FILES += rtl/bmc_spi.v
 SYN_FILES += rtl/led_sreg_driver.v
 SYN_FILES += rtl/sync_signal.v
@@ -15,7 +13,12 @@ SYN_FILES += rtl/common/mqnic_core_pcie_us.v
 SYN_FILES += rtl/common/mqnic_core_pcie.v
 SYN_FILES += rtl/common/mqnic_core.v
 SYN_FILES += rtl/common/mqnic_interface.v
-SYN_FILES += rtl/common/mqnic_port.v
+SYN_FILES += rtl/common/mqnic_interface_tx.v
+SYN_FILES += rtl/common/mqnic_interface_rx.v
+SYN_FILES += rtl/common/mqnic_egress.v
+SYN_FILES += rtl/common/mqnic_ingress.v
+SYN_FILES += rtl/common/mqnic_l2_egress.v
+SYN_FILES += rtl/common/mqnic_l2_ingress.v
 SYN_FILES += rtl/common/mqnic_ptp.v
 SYN_FILES += rtl/common/mqnic_ptp_clock.v
 SYN_FILES += rtl/common/mqnic_ptp_perout.v
@@ -26,11 +29,17 @@ SYN_FILES += rtl/common/desc_op_mux.v
 SYN_FILES += rtl/common/event_mux.v
 SYN_FILES += rtl/common/queue_manager.v
 SYN_FILES += rtl/common/cpl_queue_manager.v
+SYN_FILES += rtl/common/tx_fifo.v
+SYN_FILES += rtl/common/rx_fifo.v
+SYN_FILES += rtl/common/tx_req_mux.v
 SYN_FILES += rtl/common/tx_engine.v
 SYN_FILES += rtl/common/rx_engine.v
 SYN_FILES += rtl/common/tx_checksum.v
 SYN_FILES += rtl/common/rx_hash.v
 SYN_FILES += rtl/common/rx_checksum.v
+SYN_FILES += rtl/common/rb_drp.v
+SYN_FILES += rtl/common/eth_xcvr_phy_10g_gty_wrapper.v
+SYN_FILES += rtl/common/eth_xcvr_phy_10g_gty_quad_wrapper.v
 SYN_FILES += rtl/common/stats_counter.v
 SYN_FILES += rtl/common/stats_collect.v
 SYN_FILES += rtl/common/stats_pcie_if.v
@@ -60,7 +69,6 @@ SYN_FILES += lib/eth/rtl/lfsr.v
 SYN_FILES += lib/eth/rtl/ptp_clock.v
 SYN_FILES += lib/eth/rtl/ptp_clock_cdc.v
 SYN_FILES += lib/eth/rtl/ptp_perout.v
-SYN_FILES += lib/eth/rtl/ptp_ts_extract.v
 SYN_FILES += lib/axi/rtl/axil_interconnect.v
 SYN_FILES += lib/axi/rtl/axil_crossbar.v
 SYN_FILES += lib/axi/rtl/axil_crossbar_addr.v
@@ -77,8 +85,9 @@ SYN_FILES += lib/axis/rtl/axis_adapter.v
 SYN_FILES += lib/axis/rtl/axis_arb_mux.v
 SYN_FILES += lib/axis/rtl/axis_async_fifo.v
 SYN_FILES += lib/axis/rtl/axis_async_fifo_adapter.v
-SYN_FILES += lib/axis/rtl/axis_arb_mux.v
+SYN_FILES += lib/axis/rtl/axis_demux.v
 SYN_FILES += lib/axis/rtl/axis_fifo.v
+SYN_FILES += lib/axis/rtl/axis_fifo_adapter.v
 SYN_FILES += lib/axis/rtl/axis_pipeline_fifo.v
 SYN_FILES += lib/axis/rtl/axis_register.v
 SYN_FILES += lib/axis/rtl/sync_reset.v
@@ -115,11 +124,13 @@ XDC_FILES += led.tcl
 XDC_FILES += lib/axis/syn/vivado/axis_async_fifo.tcl
 XDC_FILES += lib/axis/syn/vivado/sync_reset.tcl
 XDC_FILES += lib/eth/syn/vivado/ptp_clock_cdc.tcl
+XDC_FILES += ../../../common/syn/vivado/rb_drp.tcl
+XDC_FILES += ../../../common/syn/vivado/eth_xcvr_phy_10g_gty_wrapper.tcl
 XDC_FILES += ../../../common/syn/vivado/tdma_ber_ch.tcl
 
 # IP
 IP_TCL_FILES = ip/pcie4_uscale_plus_0.tcl
-IP_TCL_FILES += ip/eth_xcvr_gt.tcl
+IP_TCL_FILES += ip/eth_xcvr_gty.tcl
 
 # Configuration
 CONFIG_TCL_FILES = ./config.tcl
@@ -136,41 +147,3 @@ program: $(FPGA_TOP).bit
 	echo "program_hw_devices [current_hw_device]" >> program.tcl
 	echo "exit" >> program.tcl
 	vivado -nojournal -nolog -mode batch -source program.tcl
-
-%.mcs %.prm: %.bit
-	echo "write_cfgmem -force -format mcs -size 64 -interface SPIx4 -loadbit {up 0x0000000 $*.bit} -checksum -file $*.mcs" > generate_mcs.tcl
-	echo "exit" >> generate_mcs.tcl
-	vivado -nojournal -nolog -mode batch -source generate_mcs.tcl
-	mkdir -p rev
-	COUNT=100; \
-	while [ -e rev/$*_rev$$COUNT.bit ]; \
-	do COUNT=$$((COUNT+1)); done; \
-	COUNT=$$((COUNT-1)); \
-	for x in .mcs .prm; \
-	do cp $*$$x rev/$*_rev$$COUNT$$x; \
-	echo "Output: rev/$*_rev$$COUNT$$x"; done;
-
-flash: $(FPGA_TOP).mcs $(FPGA_TOP).prm
-	echo "open_hw" > flash.tcl
-	echo "connect_hw_server" >> flash.tcl
-	echo "open_hw_target" >> flash.tcl
-	echo "current_hw_device [lindex [get_hw_devices] 0]" >> flash.tcl
-	echo "refresh_hw_device -update_hw_probes false [current_hw_device]" >> flash.tcl
-	echo "create_hw_cfgmem -hw_device [current_hw_device] [lindex [get_cfgmem_parts {mt25qu512-spi-x1_x2_x4}] 0]" >> flash.tcl
-	echo "current_hw_cfgmem -hw_device [current_hw_device] [get_property PROGRAM.HW_CFGMEM [current_hw_device]]" >> flash.tcl
-	echo "set_property PROGRAM.FILES [list \"$(FPGA_TOP).mcs\"] [current_hw_cfgmem]" >> flash.tcl
-	echo "set_property PROGRAM.PRM_FILES [list \"$(FPGA_TOP).prm\"] [current_hw_cfgmem]" >> flash.tcl
-	echo "set_property PROGRAM.ERASE 1 [current_hw_cfgmem]" >> flash.tcl
-	echo "set_property PROGRAM.CFG_PROGRAM 1 [current_hw_cfgmem]" >> flash.tcl
-	echo "set_property PROGRAM.VERIFY 1 [current_hw_cfgmem]" >> flash.tcl
-	echo "set_property PROGRAM.CHECKSUM 0 [current_hw_cfgmem]" >> flash.tcl
-	echo "set_property PROGRAM.ADDRESS_RANGE {use_file} [current_hw_cfgmem]" >> flash.tcl
-	echo "set_property PROGRAM.UNUSED_PIN_TERMINATION {pull-none} [current_hw_cfgmem]" >> flash.tcl
-	echo "create_hw_bitstream -hw_device [current_hw_device] [get_property PROGRAM.HW_CFGMEM_BITFILE [current_hw_device]]" >> flash.tcl
-	echo "program_hw_devices [current_hw_device]" >> flash.tcl
-	echo "refresh_hw_device [current_hw_device]" >> flash.tcl
-	echo "program_hw_cfgmem -hw_cfgmem [current_hw_cfgmem]" >> flash.tcl
-	echo "boot_hw_device [current_hw_device]" >> flash.tcl
-	echo "exit" >> flash.tcl
-	vivado -nojournal -nolog -mode batch -source flash.tcl
-

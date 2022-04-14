@@ -19,7 +19,8 @@ set_property -dict [list \
     CONFIG.pf0_bar0_size {16} \
     CONFIG.vendor_id {1234} \
     CONFIG.en_msi_per_vec_masking {true} \
-	CONFIG.pcie_blk_locn {X1Y0} \
-	CONFIG.select_quad {GTH_Quad_227} \
-	CONFIG.MASTER_GT {GTHE4_CHANNEL_X49Y99} \
+    CONFIG.pcie_blk_locn {X1Y0} \
+    CONFIG.select_quad {GTH_Quad_227} \
+    CONFIG.MASTER_GT {GTHE4_CHANNEL_X49Y99} \
 ] [get_ips pcie4_uscale_plus_0]
+

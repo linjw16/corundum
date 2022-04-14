@@ -114,12 +114,14 @@ set eth_xcvr_rx_eq_mode {DFE}
 # 7   1      0 (0.0)  1 (1.0)  2 (2.0)  3 (3.0)    4 (4.0)  5 (5.0)  6 (6.0)
 # 8   1      0 (0.0)  1 (1.0)  2 (2.0)  3 (3.0)    4 (4.0)  5 (5.0)  6 (6.0)  7 (7.0)
 
-dict set params IF_COUNT "8"
+dict set params IF_COUNT "4"
 dict set params PORTS_PER_IF "1"
+dict set params SCHED_PER_IF [dict get $params PORTS_PER_IF]
 
 # PTP configuration
-# linjw: origin 1
-dict set params PTP_PEROUT_ENABLE "0"
+dict set params PTP_CLOCK_PIPELINE "0"
+dict set params PTP_PORT_CDC_PIPELINE "0"
+dict set params PTP_PEROUT_ENABLE "1"
 dict set params PTP_PEROUT_COUNT "1"
 
 # Queue manager configuration (interface)
@@ -128,6 +130,7 @@ dict set params TX_QUEUE_OP_TABLE_SIZE "32"
 dict set params RX_QUEUE_OP_TABLE_SIZE "32"
 dict set params TX_CPL_QUEUE_OP_TABLE_SIZE [dict get $params TX_QUEUE_OP_TABLE_SIZE]
 dict set params RX_CPL_QUEUE_OP_TABLE_SIZE [dict get $params RX_QUEUE_OP_TABLE_SIZE]
+dict set params EVENT_QUEUE_INDEX_WIDTH "5"
 dict set params TX_QUEUE_INDEX_WIDTH "13"
 dict set params RX_QUEUE_INDEX_WIDTH "8"
 dict set params TX_CPL_QUEUE_INDEX_WIDTH [dict get $params TX_QUEUE_INDEX_WIDTH]
@@ -190,7 +193,7 @@ dict set params PCIE_DMA_WRITE_TX_FC_ENABLE "1"
 
 # AXI lite interface configuration (control)
 dict set params AXIL_CTRL_DATA_WIDTH "32"
-dict set params AXIL_CTRL_ADDR_WIDTH "32"
+dict set params AXIL_CTRL_ADDR_WIDTH "28"
 
 # AXI lite interface configuration (application control)
 dict set params AXIL_APP_CTRL_DATA_WIDTH [dict get $params AXIL_CTRL_DATA_WIDTH]

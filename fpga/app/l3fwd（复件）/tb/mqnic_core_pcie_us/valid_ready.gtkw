@@ -1,0 +1,65 @@
+[*]
+[*] GTKWave Analyzer v3.3.103 (w)1999-2019 BSI
+[*] Wed Mar  9 12:34:42 2022
+[*]
+[dumpfile] "/home/linjw16/E/Program_Files/prj/f1000_l3fwd/app/template/tb/mqnic_core_pcie_us/mqnic_core_pcie_us.fst"
+[dumpfile_mtime] "Wed Mar  9 12:34:34 2022"
+[dumpfile_size] 330
+[savefile] "/home/linjw16/E/Program_Files/prj/f1000_l3fwd/app/template/tb/mqnic_core_pcie_us/temp.gtkw"
+[timestart] 59755410
+[size] 3664 2018
+[pos] -1 -1
+*-14.000000 59950630 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] mqnic_core_pcie_us.
+[treeopen] mqnic_core_pcie_us.core_pcie_inst.
+[treeopen] mqnic_core_pcie_us.core_pcie_inst.core_inst.
+[treeopen] mqnic_core_pcie_us.core_pcie_inst.core_inst.app.
+[treeopen] mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.
+[treeopen] mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.
+[treeopen] mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.
+[sst_width] 584
+[signals_width] 510
+[sst_expanded] 1
+[sst_vpaned_height] 599
+@28
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.s_axis_rx_tready
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.s_axis_rx_tvalid
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.m_axis_rx_tready
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.m_axis_rx_tvalid
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.clk
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.parser_inst.stream_hdr_ready
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.parser_inst.stream_hdr_valid
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.parser_inst.stream_in_ready
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.parser_inst.stream_in_valid
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.parser_inst.stream_out_ready
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.parser_inst.stream_out_valid
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.parser_inst.clk
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.match_pipe_inst.stream_in_ready
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.match_pipe_inst.stream_in_valid
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.match_pipe_inst.avst_hdr_ready[2:0]
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.match_pipe_inst.avst_hdr_valid_next[2:0]
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.match_pipe_inst.stream_out_ready
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.match_pipe_inst.stream_out_valid
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.action_pipe_inst.clk
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.action_pipe_inst.stream_in_ready
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.action_pipe_inst.stream_in_valid
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.action_pipe_inst.stream_hdr_ready[4:0]
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.action_pipe_inst.stream_hdr_valid[4:0]
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.action_pipe_inst.stream_out_ready
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.action_pipe_inst.stream_out_valid
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.deparser_inst.clk
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.deparser_inst.state_reg[2:0]
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.deparser_inst.stream_in_hdr_ready
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.deparser_inst.stream_in_hdr_valid
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.deparser_inst.stream_in_ready
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.deparser_inst.stream_in_valid
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.deparser_inst.stream_out_ready
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.deparser_inst.stream_out_valid
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.deparser_inst.stream_fifo_ready_reg
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.deparser_inst.merge_out_ready
+@29
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.deparser_inst.merge_out_valid_reg
+@28
+mqnic_core_pcie_us.core_pcie_inst.core_inst.app.app_block_inst.app_top_inst.app_mat_inst.deparser_inst.stream_fifo_valid
+[pattern_trace] 1
+[pattern_trace] 0
