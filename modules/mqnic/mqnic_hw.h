@@ -38,6 +38,14 @@
 
 #include <linux/types.h>
 
+#ifdef CONFIG_OF
+/* platform driver OF-related definitions */
+#define MQNIC_PROP_MAC_ADDR_INC_BYTE "mac-address-increment-byte"
+#define MQNIC_PROP_MAC_ADDR_INC "mac-address-increment"
+#define MQNIC_PROP_MAC_ADDR_LOCAL "mac-address-local"
+#define MQNIC_PROP_MODULE_EEPROM "module-eeproms"
+#endif
+
 #define MQNIC_MAX_IRQ 32
 
 #define MQNIC_MAX_IF 8
@@ -178,13 +186,15 @@
 #define MQNIC_RB_IF_REG_CSR_OFFSET  0x18
 
 #define MQNIC_RB_IF_CTRL_TYPE            0x0000C001
-#define MQNIC_RB_IF_CTRL_VER             0x00000200
+#define MQNIC_RB_IF_CTRL_VER             0x00000300
 #define MQNIC_RB_IF_CTRL_REG_FEATURES    0x0C
-#define MQNIC_RB_IF_CTRL_REG_MAX_TX_MTU  0x10
-#define MQNIC_RB_IF_CTRL_REG_MAX_RX_MTU  0x14
-#define MQNIC_RB_IF_CTRL_REG_TX_MTU      0x18
-#define MQNIC_RB_IF_CTRL_REG_RX_MTU      0x1C
-#define MQNIC_RB_IF_CTRL_REG_RSS_MASK    0x20
+#define MQNIC_RB_IF_CTRL_REG_PORT_COUNT  0x10
+#define MQNIC_RB_IF_CTRL_REG_SCHED_COUNT 0x14
+#define MQNIC_RB_IF_CTRL_REG_MAX_TX_MTU  0x20
+#define MQNIC_RB_IF_CTRL_REG_MAX_RX_MTU  0x24
+#define MQNIC_RB_IF_CTRL_REG_TX_MTU      0x28
+#define MQNIC_RB_IF_CTRL_REG_RX_MTU      0x2C
+#define MQNIC_RB_IF_CTRL_REG_RSS_MASK    0x30
 
 #define MQNIC_IF_FEATURE_RSS      (1 << 0)
 #define MQNIC_IF_FEATURE_PTP_TS   (1 << 4)

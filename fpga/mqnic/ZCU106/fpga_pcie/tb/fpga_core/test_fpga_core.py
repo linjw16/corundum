@@ -353,9 +353,9 @@ async def run_test_nic(dut):
 
     # enable queues
     tb.log.info("Enable queues")
-    await tb.driver.interfaces[0].ports[0].schedulers[0].rb.write_dword(mqnic.MQNIC_RB_SCHED_RR_REG_CTRL, 0x00000001)
+    await tb.driver.interfaces[0].sched_blocks[0].schedulers[0].rb.write_dword(mqnic.MQNIC_RB_SCHED_RR_REG_CTRL, 0x00000001)
     for k in range(tb.driver.interfaces[0].tx_queue_count):
-        await tb.driver.interfaces[0].ports[0].schedulers[0].hw_regs.write_dword(4*k, 0x00000003)
+        await tb.driver.interfaces[0].sched_blocks[0].schedulers[0].hw_regs.write_dword(4*k, 0x00000003)
 
     # wait for all writes to complete
     await tb.driver.hw_regs.read_dword(0)
@@ -575,9 +575,12 @@ def test_fpga_core(request):
     # Structural configuration
     parameters['IF_COUNT'] = 2
     parameters['PORTS_PER_IF'] = 1
+    parameters['SCHED_PER_IF'] = parameters['PORTS_PER_IF']
 
     # PTP configuration
+    parameters['PTP_CLOCK_PIPELINE'] = 0
     parameters['PTP_USE_SAMPLE_CLOCK'] = 0
+    parameters['PTP_PORT_CDC_PIPELINE'] = 0
     parameters['PTP_PEROUT_ENABLE'] = 1
     parameters['PTP_PEROUT_COUNT'] = 1
 
@@ -587,6 +590,7 @@ def test_fpga_core(request):
     parameters['RX_QUEUE_OP_TABLE_SIZE'] = 32
     parameters['TX_CPL_QUEUE_OP_TABLE_SIZE'] = parameters['TX_QUEUE_OP_TABLE_SIZE']
     parameters['RX_CPL_QUEUE_OP_TABLE_SIZE'] = parameters['RX_QUEUE_OP_TABLE_SIZE']
+    parameters['EVENT_QUEUE_INDEX_WIDTH'] = 5
     parameters['TX_QUEUE_INDEX_WIDTH'] = 13
     parameters['RX_QUEUE_INDEX_WIDTH'] = 8
     parameters['TX_CPL_QUEUE_INDEX_WIDTH'] = parameters['TX_QUEUE_INDEX_WIDTH']

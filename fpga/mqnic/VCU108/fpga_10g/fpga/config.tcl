@@ -95,8 +95,11 @@ dict set params RELEASE_INFO  [format "32'h%08x" $release_info]
 
 dict set params IF_COUNT "1"
 dict set params PORTS_PER_IF "1"
+dict set params SCHED_PER_IF [dict get $params PORTS_PER_IF]
 
 # PTP configuration
+dict set params PTP_CLOCK_PIPELINE "0"
+dict set params PTP_PORT_CDC_PIPELINE "0"
 dict set params PTP_PEROUT_ENABLE "1"
 dict set params PTP_PEROUT_COUNT "1"
 
@@ -106,6 +109,7 @@ dict set params TX_QUEUE_OP_TABLE_SIZE "32"
 dict set params RX_QUEUE_OP_TABLE_SIZE "32"
 dict set params TX_CPL_QUEUE_OP_TABLE_SIZE [dict get $params TX_QUEUE_OP_TABLE_SIZE]
 dict set params RX_CPL_QUEUE_OP_TABLE_SIZE [dict get $params RX_QUEUE_OP_TABLE_SIZE]
+dict set params EVENT_QUEUE_INDEX_WIDTH "5"
 dict set params TX_QUEUE_INDEX_WIDTH "11"
 dict set params RX_QUEUE_INDEX_WIDTH "8"
 dict set params TX_CPL_QUEUE_INDEX_WIDTH [dict get $params TX_QUEUE_INDEX_WIDTH]

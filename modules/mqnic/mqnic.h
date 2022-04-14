@@ -37,7 +37,10 @@
 #define MQNIC_H
 
 #include <linux/kernel.h>
+#ifdef CONFIG_PCI
 #include <linux/pci.h>
+#endif
+#include <linux/platform_device.h>
 #include <linux/miscdevice.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
@@ -60,10 +63,10 @@ struct mqnic_dev;
 struct mqnic_if;
 
 struct reg_block {
-    u32 type;
-    u32 version;
-    u8 __iomem *regs;
-    u8 __iomem *base;
+	u32 type;
+	u32 version;
+	u8 __iomem *regs;
+	u8 __iomem *base;
 };
 
 struct mqnic_board_ops {
@@ -93,12 +96,16 @@ struct mqnic_i2c_bus {
 struct mqnic_irq {
 	int index;
 	int irqn;
+	char name[16 + 3];
 	struct atomic_notifier_head nh;
 };
 
 struct mqnic_dev {
 	struct device *dev;
+#ifdef CONFIG_PCI
 	struct pci_dev *pdev;
+#endif
+	struct platform_device *pfdev;
 
 	resource_size_t hw_regs_size;
 	phys_addr_t hw_regs_phys;
@@ -303,7 +310,7 @@ struct mqnic_eq_ring {
 struct mqnic_sched {
 	struct device *dev;
 	struct mqnic_if *interface;
-	struct mqnic_port *port;
+	struct mqnic_sched_block *sched_block;
 
 	struct reg_block *rb;
 
@@ -317,7 +324,7 @@ struct mqnic_sched {
 	u8 __iomem *hw_addr;
 };
 
-struct mqnic_port {
+struct mqnic_sched_block {
 	struct device *dev;
 	struct mqnic_if *interface;
 
@@ -381,9 +388,9 @@ struct mqnic_if {
 	struct mqnic_cq_ring *rx_cpl_ring[MQNIC_MAX_RX_CPL_RINGS];
 
 	u32 port_count;
-	u32 port_offset;
-	u32 port_stride;
-	struct mqnic_port *port[MQNIC_MAX_PORTS];
+	u32 sched_block_count;
+
+	struct mqnic_sched_block *sched_block[MQNIC_MAX_PORTS];
 
 	u32 max_desc_block_size;
 
@@ -426,8 +433,8 @@ struct mqnic_priv {
 	u32 rx_cpl_queue_count;
 	struct mqnic_cq_ring *rx_cpl_ring[MQNIC_MAX_RX_CPL_RINGS];
 
-	u32 port_count;
-	struct mqnic_port *port[MQNIC_MAX_PORTS];
+	u32 sched_block_count;
+	struct mqnic_sched_block *sched_block[MQNIC_MAX_PORTS];
 
 	u32 max_desc_block_size;
 
@@ -446,6 +453,7 @@ void free_reg_block_list(struct reg_block *list);
 // mqnic_irq.c
 int mqnic_irq_init_pcie(struct mqnic_dev *mdev);
 void mqnic_irq_deinit_pcie(struct mqnic_dev *mdev);
+int mqnic_irq_init_platform(struct mqnic_dev *mdev);
 
 // mqnic_dev.c
 extern const struct file_operations mqnic_fops;
@@ -467,15 +475,15 @@ int mqnic_create_netdev(struct mqnic_if *interface, struct net_device **ndev_ptr
 		int index, int dev_port);
 void mqnic_destroy_netdev(struct net_device **ndev_ptr);
 
-// mqnic_port.c
-int mqnic_create_port(struct mqnic_if *interface, struct mqnic_port **port_ptr,
+// mqnic_sched_block.c
+int mqnic_create_sched_block(struct mqnic_if *interface, struct mqnic_sched_block **block_ptr,
 		int index, struct reg_block *rb);
-void mqnic_destroy_port(struct mqnic_port **port_ptr);
-int mqnic_activate_port(struct mqnic_port *port);
-void mqnic_deactivate_port(struct mqnic_port *port);
+void mqnic_destroy_sched_block(struct mqnic_sched_block **block_ptr);
+int mqnic_activate_sched_block(struct mqnic_sched_block *block);
+void mqnic_deactivate_sched_block(struct mqnic_sched_block *block);
 
 // mqnic_scheduler.c
-int mqnic_create_scheduler(struct mqnic_port *port, struct mqnic_sched **sched_ptr,
+int mqnic_create_scheduler(struct mqnic_sched_block *block, struct mqnic_sched **sched_ptr,
 		int index, struct reg_block *rb);
 void mqnic_destroy_scheduler(struct mqnic_sched **sched_ptr);
 int mqnic_scheduler_enable(struct mqnic_sched *sched);

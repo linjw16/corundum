@@ -55,8 +55,11 @@ module fpga #
     // Structural configuration
     parameter IF_COUNT = 2,
     parameter PORTS_PER_IF = 1,
+    parameter SCHED_PER_IF = PORTS_PER_IF,
 
     // PTP configuration
+    parameter PTP_CLOCK_PIPELINE = 1,
+    parameter PTP_PORT_CDC_PIPELINE = 1,
     parameter PTP_PEROUT_ENABLE = 0,
     parameter PTP_PEROUT_COUNT = 1,
 
@@ -66,6 +69,7 @@ module fpga #
     parameter RX_QUEUE_OP_TABLE_SIZE = 32,
     parameter TX_CPL_QUEUE_OP_TABLE_SIZE = TX_QUEUE_OP_TABLE_SIZE,
     parameter RX_CPL_QUEUE_OP_TABLE_SIZE = RX_QUEUE_OP_TABLE_SIZE,
+    parameter EVENT_QUEUE_INDEX_WIDTH = 5,
     parameter TX_QUEUE_INDEX_WIDTH = 13,
     parameter RX_QUEUE_INDEX_WIDTH = 8,
     parameter TX_CPL_QUEUE_INDEX_WIDTH = TX_QUEUE_INDEX_WIDTH,
@@ -762,7 +766,11 @@ always @(posedge pcie_user_clk) begin
     pcie_user_reset_reg_2 <= pcie_user_reset_reg_1;
 end
 
-assign pcie_user_reset = pcie_user_reset_reg_2;
+BUFG
+pcie_user_reset_bufg_inst (
+    .I(pcie_user_reset_reg_2),
+    .O(pcie_user_reset)
+);
 
 pcie4c_uscale_plus_0
 pcie4c_uscale_plus_inst (
@@ -1374,6 +1382,7 @@ fpga_core #(
     // Structural configuration
     .IF_COUNT(IF_COUNT),
     .PORTS_PER_IF(PORTS_PER_IF),
+    .SCHED_PER_IF(SCHED_PER_IF),
 
     // PTP configuration
     .PTP_TS_WIDTH(PTP_TS_WIDTH),
@@ -1383,7 +1392,9 @@ fpga_core #(
     .PTP_FNS_WIDTH(PTP_FNS_WIDTH),
     .PTP_PERIOD_NS(PTP_PERIOD_NS),
     .PTP_PERIOD_FNS(PTP_PERIOD_FNS),
+    .PTP_CLOCK_PIPELINE(PTP_CLOCK_PIPELINE),
     .PTP_USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK),
+    .PTP_PORT_CDC_PIPELINE(PTP_PORT_CDC_PIPELINE),
     .PTP_PEROUT_ENABLE(PTP_PEROUT_ENABLE),
     .PTP_PEROUT_COUNT(PTP_PEROUT_COUNT),
     .IF_PTP_PERIOD_NS(IF_PTP_PERIOD_NS),
@@ -1395,6 +1406,7 @@ fpga_core #(
     .RX_QUEUE_OP_TABLE_SIZE(RX_QUEUE_OP_TABLE_SIZE),
     .TX_CPL_QUEUE_OP_TABLE_SIZE(TX_CPL_QUEUE_OP_TABLE_SIZE),
     .RX_CPL_QUEUE_OP_TABLE_SIZE(RX_CPL_QUEUE_OP_TABLE_SIZE),
+    .EVENT_QUEUE_INDEX_WIDTH(EVENT_QUEUE_INDEX_WIDTH),
     .TX_QUEUE_INDEX_WIDTH(TX_QUEUE_INDEX_WIDTH),
     .RX_QUEUE_INDEX_WIDTH(RX_QUEUE_INDEX_WIDTH),
     .TX_CPL_QUEUE_INDEX_WIDTH(TX_CPL_QUEUE_INDEX_WIDTH),

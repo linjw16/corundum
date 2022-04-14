@@ -55,6 +55,7 @@ module mqnic_core #
     // Structural configuration
     parameter IF_COUNT = 1,
     parameter PORTS_PER_IF = 1,
+    parameter SCHED_PER_IF = PORTS_PER_IF,
 
     parameter PORT_COUNT = IF_COUNT*PORTS_PER_IF,
 
@@ -66,8 +67,10 @@ module mqnic_core #
     parameter PTP_FNS_WIDTH = 32,
     parameter PTP_PERIOD_NS = 4'd4,
     parameter PTP_PERIOD_FNS = 32'd0,
+    parameter PTP_CLOCK_PIPELINE = 0,
     parameter PTP_USE_SAMPLE_CLOCK = 0,
     parameter PTP_SEPARATE_RX_CLOCK = 0,
+    parameter PTP_PORT_CDC_PIPELINE = 0,
     parameter PTP_PEROUT_ENABLE = 0,
     parameter PTP_PEROUT_COUNT = 1,
 
@@ -77,6 +80,7 @@ module mqnic_core #
     parameter RX_QUEUE_OP_TABLE_SIZE = 32,
     parameter TX_CPL_QUEUE_OP_TABLE_SIZE = TX_QUEUE_OP_TABLE_SIZE,
     parameter RX_CPL_QUEUE_OP_TABLE_SIZE = RX_QUEUE_OP_TABLE_SIZE,
+    parameter EVENT_QUEUE_INDEX_WIDTH = 5,
     parameter TX_QUEUE_INDEX_WIDTH = 13,
     parameter RX_QUEUE_INDEX_WIDTH = 8,
     parameter TX_CPL_QUEUE_INDEX_WIDTH = TX_QUEUE_INDEX_WIDTH,
@@ -617,6 +621,7 @@ mqnic_ptp #(
     .PTP_FNS_WIDTH(PTP_FNS_WIDTH),
     .PTP_PERIOD_NS(PTP_PERIOD_NS),
     .PTP_PERIOD_FNS(PTP_PERIOD_FNS),
+    .PTP_CLOCK_PIPELINE(PTP_CLOCK_PIPELINE),
     .PTP_PEROUT_ENABLE(PTP_PEROUT_ENABLE),
     .PTP_PEROUT_COUNT(PTP_PEROUT_COUNT),
     .REG_ADDR_WIDTH(AXIL_CTRL_ADDR_WIDTH),
@@ -2158,6 +2163,7 @@ generate
 
         mqnic_interface #(
             .PORTS(PORTS_PER_IF),
+            .SCHEDULERS(SCHED_PER_IF),
             .DMA_ADDR_WIDTH(DMA_ADDR_WIDTH),
             .DMA_LEN_WIDTH(DMA_LEN_WIDTH),
             .DMA_TAG_WIDTH(IF_DMA_TAG_WIDTH),
@@ -2166,6 +2172,7 @@ generate
             .RX_QUEUE_OP_TABLE_SIZE(RX_QUEUE_OP_TABLE_SIZE),
             .TX_CPL_QUEUE_OP_TABLE_SIZE(TX_CPL_QUEUE_OP_TABLE_SIZE),
             .RX_CPL_QUEUE_OP_TABLE_SIZE(RX_CPL_QUEUE_OP_TABLE_SIZE),
+            .EVENT_QUEUE_INDEX_WIDTH(EVENT_QUEUE_INDEX_WIDTH),
             .TX_QUEUE_INDEX_WIDTH(TX_QUEUE_INDEX_WIDTH),
             .RX_QUEUE_INDEX_WIDTH(RX_QUEUE_INDEX_WIDTH),
             .TX_CPL_QUEUE_INDEX_WIDTH(TX_CPL_QUEUE_INDEX_WIDTH),
@@ -2775,7 +2782,8 @@ generate
                     .TS_WIDTH(PTP_TS_WIDTH),
                     .NS_WIDTH(PTP_PERIOD_NS_WIDTH),
                     .FNS_WIDTH(16),
-                    .USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK)
+                    .USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK),
+                    .PIPELINE_OUTPUT(PTP_PORT_CDC_PIPELINE)
                 )
                 tx_ptp_cdc_inst (
                     .input_clk(clk),
@@ -2795,7 +2803,8 @@ generate
                     .TS_WIDTH(PTP_TS_WIDTH),
                     .NS_WIDTH(PTP_PERIOD_NS_WIDTH),
                     .FNS_WIDTH(16),
-                    .USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK)
+                    .USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK),
+                    .PIPELINE_OUTPUT(PTP_PORT_CDC_PIPELINE)
                 )
                 rx_ptp_cdc_inst (
                     .input_clk(clk),
@@ -3512,6 +3521,7 @@ if (APP_ENABLE) begin : app
         // Structural configuration
         .IF_COUNT(IF_COUNT),
         .PORTS_PER_IF(PORTS_PER_IF),
+        .SCHED_PER_IF(SCHED_PER_IF),
 
         .PORT_COUNT(PORT_COUNT),
 
@@ -3524,6 +3534,7 @@ if (APP_ENABLE) begin : app
         .PTP_PERIOD_NS(PTP_PERIOD_NS),
         .PTP_PERIOD_FNS(PTP_PERIOD_FNS),
         .PTP_USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK),
+        .PTP_PORT_CDC_PIPELINE(PTP_PORT_CDC_PIPELINE),
         .PTP_PEROUT_ENABLE(PTP_PEROUT_ENABLE),
         .PTP_PEROUT_COUNT(PTP_PEROUT_COUNT),
         .PTP_TS_ENABLE(PTP_TS_ENABLE),
