@@ -26,3 +26,15 @@ driver with insmod mqnic.ko.  Check dmesg for output from driver
 initialization.
 
 
+Citation
+
+If you use Corundum in your project, please cite one of the following papers and/or link to the project on GitHub:
+
+```
+@inproceedings{forencich2020fccm,
+    author = {Alex Forencich and Alex C. Snoeren and George Porter and George Papen},
+    title = {Corundum: An Open-Source {100-Gbps} {NIC}},
+    booktitle = {28th IEEE International Symposium on Field-Programmable Custom Computing Machines},
+    year = {2020},
+}
+```

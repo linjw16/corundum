@@ -264,8 +264,8 @@ module fpga #
 );
 
 // PTP configuration
-parameter PTP_TS_WIDTH = 96;
-parameter PTP_TAG_WIDTH = 16;
+parameter PTP_TS_WIDTH = PTP_TS_ENABLE ? 96 : 0;	// linjw:
+parameter PTP_TAG_WIDTH = PTP_TS_ENABLE ? 16 : 0;
 parameter PTP_PERIOD_NS_WIDTH = 4;
 parameter PTP_OFFSET_NS_WIDTH = 32;
 parameter PTP_FNS_WIDTH = 32;

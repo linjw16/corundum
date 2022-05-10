@@ -115,44 +115,32 @@ SYN_FILES += lib/pcie/rtl/pcie_us_if_cq.v
 SYN_FILES += lib/pcie/rtl/pcie_us_cfg.v
 SYN_FILES += lib/pcie/rtl/pcie_us_msi.v
 SYN_FILES += lib/pcie/rtl/pulse_merge.v
+
 # linjw begin: MAT
 SYN_FILES += app/l3fwd/rtl/mqnic_app_block.v
 SYN_FILES += app/l3fwd/rtl/app_top.v
+SYN_FILES += app/l3fwd/rtl/app_core.v
 SYN_FILES += app/l3fwd/rtl/app_mat.v
-SYN_FILES += lib/avst/rtl/avst_fifo.v
-SYN_FILES += lib/avst/rtl/avst_mux.v
+SYN_FILES += app/l3fwd/rtl/match_pipe.v
+SYN_FILES += app/l3fwd/rtl/action_pipe/action_pipe.v
+SYN_FILES += app/l3fwd/rtl/action_pipe/axis_hdr_csum.v
+SYN_FILES += app/l3fwd/rtl/action_pipe/axis_set_field.v
+SYN_FILES += app/l3fwd/rtl/action_pipe/set_field_async.v
+SYN_FILES += app/l3fwd/rtl/action_pipe/axis_vlan_op.v
+SYN_FILES += app/l3fwd/rtl/axis_parser.v
+SYN_FILES += app/l3fwd/rtl/axis_deparser.v
 SYN_FILES += lib/axis/rtl/axis_switch.v
-# SYN_FILES += lib/axis/rtl/priority_encoder.v
-# SYN_FILES += lib/pcie/rtl/dma_psdpram.v
-# Bus wrapper
-SYN_FILES += lib/bus_wrapper/rtl/axis_to_avst.v
-SYN_FILES += lib/bus_wrapper/rtl/avst_to_axis.v
-SYN_FILES += lib/bus_wrapper/rtl/axil_to_avmm.v
-# FracTCAM
-SYN_FILES += lib/fractcam/tb/fractcam/fractcam_top.v
-SYN_FILES += lib/fractcam/rtl/fractcam/async_demux.v
-SYN_FILES += lib/fractcam/rtl/fractcam/update_logic.v
+SYN_FILES += lib/axis/rtl/axis_mux.v
+SYN_FILES += lib/fractcam/rtl/fractcam/fractcam_top.v
 SYN_FILES += lib/fractcam/rtl/fractcam/fractcam.v
 SYN_FILES += lib/fractcam/rtl/fractcam/fractcam8x5.v
 SYN_FILES += lib/fractcam/rtl/fractcam/and0.v
 SYN_FILES += lib/fractcam/rtl/fractcam/and6.v
-SYN_FILES += lib/fractcam/rtl/fractcam/andD6slice.v
-# FracTCAM sim
+SYN_FILES += lib/fractcam/rtl/fractcam/and6x4.v
 # SYN_FILES += lib/fractcam/rtl/sim/FDRE.v
 # SYN_FILES += lib/fractcam/rtl/sim/LUT6.v
 # SYN_FILES += lib/fractcam/rtl/sim/RAM32M.v
 # SYN_FILES += lib/fractcam/rtl/sim/SRLC32E.v
-## Match Pipeline
-SYN_FILES += app/l3fwd/rtl/match_pipe.v
-## Action Pipeline
-SYN_FILES += app/l3fwd/rtl/action_pipe/action_pipe.v
-SYN_FILES += app/l3fwd/rtl/action_pipe/hdr_csum.v
-SYN_FILES += app/l3fwd/rtl/action_pipe/set_field.v
-SYN_FILES += app/l3fwd/rtl/action_pipe/set_field_async.v
-SYN_FILES += app/l3fwd/rtl/action_pipe/vlan_op.v
-## Parser, deparser 
-SYN_FILES += app/l3fwd/rtl/parser.v
-SYN_FILES += app/l3fwd/rtl/deparser.v
 
 # XDC files
 XDC_FILES = fpga.xdc

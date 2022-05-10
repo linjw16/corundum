@@ -114,7 +114,7 @@ set eth_xcvr_rx_eq_mode {DFE}
 # 7   1      0 (0.0)  1 (1.0)  2 (2.0)  3 (3.0)    4 (4.0)  5 (5.0)  6 (6.0)
 # 8   1      0 (0.0)  1 (1.0)  2 (2.0)  3 (3.0)    4 (4.0)  5 (5.0)  6 (6.0)  7 (7.0)
 
-dict set params IF_COUNT "8"
+dict set params IF_COUNT "4"
 dict set params PORTS_PER_IF "1"
 dict set params SCHED_PER_IF [dict get $params PORTS_PER_IF]
 
@@ -151,30 +151,30 @@ dict set params TX_SCHEDULER_PIPELINE [dict get $params TX_QUEUE_PIPELINE]
 dict set params TDMA_INDEX_WIDTH "6"
 
 # Timestamping configuration (port)
-dict set params PTP_TS_ENABLE "0"
+dict set params PTP_TS_ENABLE "1"
 dict set params TX_PTP_TS_FIFO_DEPTH "32"
 dict set params RX_PTP_TS_FIFO_DEPTH "32"
 
 # Interface configuration (port)
-dict set params TX_CHECKSUM_ENABLE "0"
+dict set params TX_CHECKSUM_ENABLE "1"
 dict set params RX_RSS_ENABLE "1"
 dict set params RX_HASH_ENABLE "1"
-dict set params RX_CHECKSUM_ENABLE "0"
-dict set params TX_FIFO_DEPTH "16384"
-dict set params RX_FIFO_DEPTH "16384"
+dict set params RX_CHECKSUM_ENABLE "1"
+dict set params TX_FIFO_DEPTH "32768"
+dict set params RX_FIFO_DEPTH "32768"
 dict set params MAX_TX_SIZE "9214"
 dict set params MAX_RX_SIZE "9214"
 dict set params TX_RAM_SIZE "32768"
 dict set params RX_RAM_SIZE "32768"
 
 # Application block configuration
-dict set params APP_ENABLE "1"
+dict set params APP_ENABLE "0"
 dict set params APP_CTRL_ENABLE "1"
-dict set params APP_DMA_ENABLE "0"
-dict set params APP_AXIS_DIRECT_ENABLE "0"
-dict set params APP_AXIS_SYNC_ENABLE "0"
+dict set params APP_DMA_ENABLE "1"
+dict set params APP_AXIS_DIRECT_ENABLE "1"
+dict set params APP_AXIS_SYNC_ENABLE "1"
 dict set params APP_AXIS_IF_ENABLE "1"
-dict set params APP_STAT_ENABLE "0"
+dict set params APP_STAT_ENABLE "1"
 
 # DMA interface configuration
 dict set params DMA_LEN_WIDTH "16"
@@ -208,9 +208,9 @@ dict set params AXIS_ETH_RX_PIPELINE "0"
 dict set params AXIS_ETH_RX_FIFO_PIPELINE "2"
 
 # Statistics counter subsystem
-dict set params STAT_ENABLE "0"
-dict set params STAT_DMA_ENABLE "0"
-dict set params STAT_PCIE_ENABLE "0"
+dict set params STAT_ENABLE "1"
+dict set params STAT_DMA_ENABLE "1"
+dict set params STAT_PCIE_ENABLE "1"
 dict set params STAT_INC_WIDTH "24"
 dict set params STAT_ID_WIDTH "12"
 
