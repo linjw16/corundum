@@ -54,11 +54,11 @@ if { ! [regsub {^.*(\d+\.\d+\.\d+([\.-]\d+)?).*$} $git_tag {\1} tag_ver ] } {
 puts "Tag version: ${tag_ver}"
 
 # FW and board IDs
-set fpga_id [expr 0x4A56093]
+set fpga_id [expr 0x4758093]
 set fw_id [expr 0x00000000]
 set fw_ver $tag_ver
-set board_vendor_id [expr 0x1c2c]
-set board_device_id [expr 0xa00e]
+set board_vendor_id [expr 0x10ee]
+set board_device_id [expr 0x9013]
 set board_ver 1.0
 set release_info [expr 0x00000000]
 
@@ -70,6 +70,7 @@ set pcie_revision_id [expr 0x00]
 set pcie_subsystem_vendor_id $board_vendor_id
 set pcie_subsystem_device_id $board_device_id
 
+# FW ID block
 dict set params FPGA_ID [format "32'h%08x" $fpga_id]
 dict set params FW_ID [format "32'h%08x" $fw_id]
 dict set params FW_VER [format "32'h%02x%02x%02x%02x" {*}[split $fw_ver .-] 0 0 0 0]
@@ -80,26 +81,25 @@ dict set params GIT_HASH  "32'h${git_hash}"
 dict set params RELEASE_INFO  [format "32'h%08x" $release_info]
 
 # Structural configuration
-
-#  counts    QSFP 0   QSFP 1
-# IF  PORT   0_0123   1_0123
-# 1   1      0 (0.0)
-# 1   2      0 (0.0)  1 (0.1)
-# 2   1      0 (0.0)  1 (1.0)
-
 dict set params IF_COUNT "2"
 dict set params PORTS_PER_IF "1"
+dict set params SCHED_PER_IF [dict get $params PORTS_PER_IF]
+dict set params PORT_MASK "0"
 
 # PTP configuration
+dict set params PTP_CLOCK_PIPELINE "0"
+dict set params PTP_CLOCK_CDC_PIPELINE "0"
+dict set params PTP_PORT_CDC_PIPELINE "0"
 dict set params PTP_PEROUT_ENABLE "1"
 dict set params PTP_PEROUT_COUNT "1"
 
-# Queue manager configuration (interface)
+# Queue manager configuration
 dict set params EVENT_QUEUE_OP_TABLE_SIZE "32"
 dict set params TX_QUEUE_OP_TABLE_SIZE "32"
 dict set params RX_QUEUE_OP_TABLE_SIZE "32"
 dict set params TX_CPL_QUEUE_OP_TABLE_SIZE [dict get $params TX_QUEUE_OP_TABLE_SIZE]
 dict set params RX_CPL_QUEUE_OP_TABLE_SIZE [dict get $params RX_QUEUE_OP_TABLE_SIZE]
+dict set params EVENT_QUEUE_INDEX_WIDTH "5"
 dict set params TX_QUEUE_INDEX_WIDTH "13"
 dict set params RX_QUEUE_INDEX_WIDTH "8"
 dict set params TX_CPL_QUEUE_INDEX_WIDTH [dict get $params TX_QUEUE_INDEX_WIDTH]
@@ -110,21 +110,18 @@ dict set params RX_QUEUE_PIPELINE [expr 3+([dict get $params RX_QUEUE_INDEX_WIDT
 dict set params TX_CPL_QUEUE_PIPELINE [dict get $params TX_QUEUE_PIPELINE]
 dict set params RX_CPL_QUEUE_PIPELINE [dict get $params RX_QUEUE_PIPELINE]
 
-# TX and RX engine configuration (port)
+# TX and RX engine configuration
 dict set params TX_DESC_TABLE_SIZE "32"
 dict set params RX_DESC_TABLE_SIZE "32"
 
-# Scheduler configuration (port)
+# Scheduler configuration
 dict set params TX_SCHEDULER_OP_TABLE_SIZE [dict get $params TX_DESC_TABLE_SIZE]
 dict set params TX_SCHEDULER_PIPELINE [dict get $params TX_QUEUE_PIPELINE]
 dict set params TDMA_INDEX_WIDTH "6"
 
-# Timestamping configuration (port)
+# Interface configuration
 dict set params PTP_TS_ENABLE "1"
-dict set params TX_PTP_TS_FIFO_DEPTH "32"
-dict set params RX_PTP_TS_FIFO_DEPTH "32"
-
-# Interface configuration (port)
+dict set params TX_CPL_FIFO_DEPTH "32"
 dict set params TX_CHECKSUM_ENABLE "1"
 dict set params RX_RSS_ENABLE "1"
 dict set params RX_HASH_ENABLE "1"
@@ -137,6 +134,7 @@ dict set params TX_RAM_SIZE "131072"
 dict set params RX_RAM_SIZE "131072"
 
 # Application block configuration
+dict set params APP_ID "32'h00000000"
 dict set params APP_ENABLE "0"
 dict set params APP_CTRL_ENABLE "1"
 dict set params APP_DMA_ENABLE "1"
@@ -146,8 +144,11 @@ dict set params APP_AXIS_IF_ENABLE "1"
 dict set params APP_STAT_ENABLE "1"
 
 # DMA interface configuration
+dict set params DMA_IMM_ENABLE "0"
+dict set params DMA_IMM_WIDTH "32"
 dict set params DMA_LEN_WIDTH "16"
 dict set params DMA_TAG_WIDTH "16"
+dict set params RAM_ADDR_WIDTH [expr int(ceil(log(max([dict get $params TX_RAM_SIZE], [dict get $params RX_RAM_SIZE]))/log(2)))]
 dict set params RAM_PIPELINE "2"
 
 # PCIe interface configuration
@@ -161,7 +162,7 @@ dict set params PCIE_DMA_WRITE_TX_FC_ENABLE "1"
 
 # AXI lite interface configuration (control)
 dict set params AXIL_CTRL_DATA_WIDTH "32"
-dict set params AXIL_CTRL_ADDR_WIDTH "32"
+dict set params AXIL_CTRL_ADDR_WIDTH "24"
 
 # AXI lite interface configuration (application control)
 dict set params AXIL_APP_CTRL_DATA_WIDTH [dict get $params AXIL_CTRL_DATA_WIDTH]
@@ -212,12 +213,16 @@ proc configure_bar {pcie pf bar aperture} {
 
             puts "${pcie} PF${pf} BAR${bar}: aperture ${aperture} bits ($size $scale)"
 
-            set_property "CONFIG.pf${pf}_bar${bar}_enabled" {true} $pcie
-            set_property "CONFIG.pf${pf}_bar${bar}_type" {Memory} $pcie
-            set_property "CONFIG.pf${pf}_bar${bar}_64bit" {true} $pcie
-            set_property "CONFIG.pf${pf}_bar${bar}_prefetchable" {true} $pcie
-            set_property "CONFIG.pf${pf}_bar${bar}_scale" $scale $pcie
-            set_property "CONFIG.pf${pf}_bar${bar}_size" $size $pcie
+            set pcie_config [dict create]
+
+            dict set pcie_config "CONFIG.pf${pf}_bar${bar}_enabled" {true}
+            dict set pcie_config "CONFIG.pf${pf}_bar${bar}_type" {Memory}
+            dict set pcie_config "CONFIG.pf${pf}_bar${bar}_64bit" {true}
+            dict set pcie_config "CONFIG.pf${pf}_bar${bar}_prefetchable" {true}
+            dict set pcie_config "CONFIG.pf${pf}_bar${bar}_scale" $scale
+            dict set pcie_config "CONFIG.pf${pf}_bar${bar}_size" $size
+
+            set_property -dict $pcie_config $pcie
 
             return
         }
