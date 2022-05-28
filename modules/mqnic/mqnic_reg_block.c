@@ -35,10 +35,10 @@
 
 #include "mqnic.h"
 
-struct reg_block *enumerate_reg_block_list(u8 __iomem *base, size_t offset, size_t size)
+struct mqnic_reg_block *mqnic_enumerate_reg_block_list(u8 __iomem *base, size_t offset, size_t size)
 {
 	int max_count = 8;
-	struct reg_block *reg_block_list = kzalloc(max_count * sizeof(struct reg_block), GFP_KERNEL);
+	struct mqnic_reg_block *reg_block_list = kzalloc(max_count * sizeof(struct mqnic_reg_block), GFP_KERNEL);
 	int count = 0;
 	int k;
 
@@ -82,9 +82,9 @@ struct reg_block *enumerate_reg_block_list(u8 __iomem *base, size_t offset, size
 		count++;
 
 		if (count >= max_count) {
-			struct reg_block *tmp;
+			struct mqnic_reg_block *tmp;
 			max_count += 4;
-			tmp = krealloc(reg_block_list, max_count * sizeof(struct reg_block), GFP_KERNEL);
+			tmp = krealloc(reg_block_list, max_count * sizeof(struct mqnic_reg_block), GFP_KERNEL);
 			if (!tmp)
 				goto fail;
 			reg_block_list = tmp;
@@ -96,12 +96,13 @@ fail:
 	kfree(reg_block_list);
 	return NULL;
 }
+EXPORT_SYMBOL(mqnic_enumerate_reg_block_list);
 
-struct reg_block *find_reg_block(struct reg_block *list, u32 type, u32 version, int index)
+struct mqnic_reg_block *mqnic_find_reg_block(struct mqnic_reg_block *list, u32 type, u32 version, int index)
 {
-	struct reg_block *rb = list;
+	struct mqnic_reg_block *rb = list;
 
-	while (rb->type && rb->version && rb->regs) {
+	while (rb->regs) {
 		if (rb->type == type && (!version || rb->version == version)) {
 			if (index > 0)
 				index--;
@@ -114,8 +115,10 @@ struct reg_block *find_reg_block(struct reg_block *list, u32 type, u32 version, 
 
 	return NULL;
 }
+EXPORT_SYMBOL(mqnic_find_reg_block);
 
-void free_reg_block_list(struct reg_block *list)
+void mqnic_free_reg_block_list(struct mqnic_reg_block *list)
 {
 	kfree(list);
 }
+EXPORT_SYMBOL(mqnic_free_reg_block_list);

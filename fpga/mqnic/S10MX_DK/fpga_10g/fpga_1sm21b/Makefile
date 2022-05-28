@@ -16,13 +16,18 @@ SYN_FILES += rtl/common/mqnic_core.v
 SYN_FILES += rtl/common/mqnic_interface.v
 SYN_FILES += rtl/common/mqnic_interface_tx.v
 SYN_FILES += rtl/common/mqnic_interface_rx.v
+SYN_FILES += rtl/common/mqnic_port.v
+SYN_FILES += rtl/common/mqnic_port_tx.v
+SYN_FILES += rtl/common/mqnic_port_rx.v
 SYN_FILES += rtl/common/mqnic_egress.v
 SYN_FILES += rtl/common/mqnic_ingress.v
 SYN_FILES += rtl/common/mqnic_l2_egress.v
 SYN_FILES += rtl/common/mqnic_l2_ingress.v
+SYN_FILES += rtl/common/mqnic_rx_queue_map.v
 SYN_FILES += rtl/common/mqnic_ptp.v
 SYN_FILES += rtl/common/mqnic_ptp_clock.v
 SYN_FILES += rtl/common/mqnic_ptp_perout.v
+SYN_FILES += rtl/common/mqnic_port_map_phy_xgmii.v
 SYN_FILES += rtl/common/cpl_write.v
 SYN_FILES += rtl/common/cpl_op_mux.v
 SYN_FILES += rtl/common/desc_fetch.v
@@ -117,6 +122,7 @@ IP_TCL_FILES += ip/pcie.tcl
 IP_TCL_FILES += ip/eth_xcvr.tcl
 IP_TCL_FILES += ip/eth_xcvr_pll.tcl
 IP_TCL_FILES += ip/eth_xcvr_reset.tcl
+IP_TCL_FILES += ip/ref_div.tcl
 
 # QSF files
 QSF_FILES = fpga.qsf

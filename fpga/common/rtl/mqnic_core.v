@@ -1,6 +1,6 @@
 /*
 
-Copyright 2021, The Regents of the University of California.
+Copyright 2021-2022, The Regents of the University of California.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -60,21 +60,18 @@ module mqnic_core #
     parameter PORT_COUNT = IF_COUNT*PORTS_PER_IF,
 
     // PTP configuration
+    parameter PTP_CLK_PERIOD_NS_NUM = 4,
+    parameter PTP_CLK_PERIOD_NS_DENOM = 1,
     parameter PTP_TS_WIDTH = 96,
-    parameter PTP_TAG_WIDTH = 16,
-    parameter PTP_PERIOD_NS_WIDTH = 4,
-    parameter PTP_OFFSET_NS_WIDTH = 32,
-    parameter PTP_FNS_WIDTH = 32,
-    parameter PTP_PERIOD_NS = 4'd4,
-    parameter PTP_PERIOD_FNS = 32'd0,
     parameter PTP_CLOCK_PIPELINE = 0,
+    parameter PTP_CLOCK_CDC_PIPELINE = 0,
     parameter PTP_USE_SAMPLE_CLOCK = 0,
     parameter PTP_SEPARATE_RX_CLOCK = 0,
     parameter PTP_PORT_CDC_PIPELINE = 0,
     parameter PTP_PEROUT_ENABLE = 0,
     parameter PTP_PEROUT_COUNT = 1,
 
-    // Queue manager configuration (interface)
+    // Queue manager configuration
     parameter EVENT_QUEUE_OP_TABLE_SIZE = 32,
     parameter TX_QUEUE_OP_TABLE_SIZE = 32,
     parameter RX_QUEUE_OP_TABLE_SIZE = 32,
@@ -91,21 +88,20 @@ module mqnic_core #
     parameter TX_CPL_QUEUE_PIPELINE = TX_QUEUE_PIPELINE,
     parameter RX_CPL_QUEUE_PIPELINE = RX_QUEUE_PIPELINE,
 
-    // TX and RX engine configuration (port)
+    // TX and RX engine configuration
     parameter TX_DESC_TABLE_SIZE = 32,
     parameter RX_DESC_TABLE_SIZE = 32,
 
-    // Scheduler configuration (port)
+    // Scheduler configuration
     parameter TX_SCHEDULER_OP_TABLE_SIZE = TX_DESC_TABLE_SIZE,
     parameter TX_SCHEDULER_PIPELINE = TX_QUEUE_PIPELINE,
     parameter TDMA_INDEX_WIDTH = 6,
 
-    // Timestamping configuration (port)
+    // Interface configuration
     parameter PTP_TS_ENABLE = 1,
-    parameter TX_PTP_TS_FIFO_DEPTH = 32,
-    parameter RX_PTP_TS_FIFO_DEPTH = 32,
-
-    // Interface configuration (port)
+    parameter TX_CPL_ENABLE = PTP_TS_ENABLE,
+    parameter TX_CPL_FIFO_DEPTH = 32,
+    parameter TX_TAG_WIDTH = $clog2(TX_DESC_TABLE_SIZE)+1,
     parameter TX_CHECKSUM_ENABLE = 1,
     parameter RX_RSS_ENABLE = 1,
     parameter RX_HASH_ENABLE = 1,
@@ -118,6 +114,7 @@ module mqnic_core #
     parameter RX_RAM_SIZE = 32768,
 
     // Application block configuration
+    parameter APP_ID = 32'h00000000,
     parameter APP_ENABLE = 0,
     parameter APP_CTRL_ENABLE = 1,
     parameter APP_DMA_ENABLE = 1,
@@ -130,6 +127,8 @@ module mqnic_core #
 
     // DMA interface configuration
     parameter DMA_ADDR_WIDTH = 64,
+    parameter DMA_IMM_ENABLE = 0,
+    parameter DMA_IMM_WIDTH = 32,
     parameter DMA_LEN_WIDTH = 16,
     parameter DMA_TAG_WIDTH = 16,
     parameter IF_RAM_SEL_WIDTH = 1,
@@ -162,7 +161,7 @@ module mqnic_core #
     parameter AXIS_KEEP_WIDTH = AXIS_DATA_WIDTH/8,
     parameter AXIS_SYNC_DATA_WIDTH = AXIS_DATA_WIDTH,
     parameter AXIS_IF_DATA_WIDTH = AXIS_SYNC_DATA_WIDTH*2**$clog2(PORTS_PER_IF),
-    parameter AXIS_TX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TAG_WIDTH : 0) + 1,
+    parameter AXIS_TX_USER_WIDTH = TX_TAG_WIDTH + 1,
     parameter AXIS_RX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TS_WIDTH : 0) + 1,
     parameter AXIS_RX_USE_READY = 0,
     parameter AXIS_TX_PIPELINE = 0,
@@ -288,6 +287,8 @@ module mqnic_core #
     output wire [DMA_ADDR_WIDTH-1:0]                    m_axis_dma_write_desc_dma_addr,
     output wire [RAM_SEL_WIDTH-1:0]                     m_axis_dma_write_desc_ram_sel,
     output wire [RAM_ADDR_WIDTH-1:0]                    m_axis_dma_write_desc_ram_addr,
+    output wire [DMA_IMM_WIDTH-1:0]                     m_axis_dma_write_desc_imm,
+    output wire                                         m_axis_dma_write_desc_imm_en,
     output wire [DMA_LEN_WIDTH-1:0]                     m_axis_dma_write_desc_len,
     output wire [DMA_TAG_WIDTH-1:0]                     m_axis_dma_write_desc_tag,
     output wire                                         m_axis_dma_write_desc_valid,
@@ -326,10 +327,15 @@ module mqnic_core #
     /*
      * PTP clock
      */
+    input  wire                                         ptp_clk,
+    input  wire                                         ptp_rst,
     input  wire                                         ptp_sample_clk,
     output wire                                         ptp_pps,
     output wire [PTP_TS_WIDTH-1:0]                      ptp_ts_96,
     output wire                                         ptp_ts_step,
+    output wire                                         ptp_sync_pps,
+    output wire [PTP_TS_WIDTH-1:0]                      ptp_sync_ts_96,
+    output wire                                         ptp_sync_ts_step,
     output wire [PTP_PEROUT_COUNT-1:0]                  ptp_perout_locked,
     output wire [PTP_PEROUT_COUNT-1:0]                  ptp_perout_error,
     output wire [PTP_PEROUT_COUNT-1:0]                  ptp_perout_pulse,
@@ -350,10 +356,12 @@ module mqnic_core #
     output wire [PORT_COUNT-1:0]                        m_axis_tx_tlast,
     output wire [PORT_COUNT*AXIS_TX_USER_WIDTH-1:0]     m_axis_tx_tuser,
 
-    input  wire [PORT_COUNT*PTP_TS_WIDTH-1:0]           s_axis_tx_ptp_ts,
-    input  wire [PORT_COUNT*PTP_TAG_WIDTH-1:0]          s_axis_tx_ptp_ts_tag,
-    input  wire [PORT_COUNT-1:0]                        s_axis_tx_ptp_ts_valid,
-    output wire [PORT_COUNT-1:0]                        s_axis_tx_ptp_ts_ready,
+    input  wire [PORT_COUNT*PTP_TS_WIDTH-1:0]           s_axis_tx_cpl_ts,
+    input  wire [PORT_COUNT*TX_TAG_WIDTH-1:0]           s_axis_tx_cpl_tag,
+    input  wire [PORT_COUNT-1:0]                        s_axis_tx_cpl_valid,
+    output wire [PORT_COUNT-1:0]                        s_axis_tx_cpl_ready,
+
+    input  wire [PORT_COUNT-1:0]                        tx_status,
 
     input  wire [PORT_COUNT-1:0]                        rx_clk,
     input  wire [PORT_COUNT-1:0]                        rx_rst,
@@ -369,6 +377,8 @@ module mqnic_core #
     output wire [PORT_COUNT-1:0]                        s_axis_rx_tready,
     input  wire [PORT_COUNT-1:0]                        s_axis_rx_tlast,
     input  wire [PORT_COUNT*AXIS_RX_USER_WIDTH-1:0]     s_axis_rx_tuser,
+
+    input  wire [PORT_COUNT-1:0]                        rx_status,
 
     /*
      * Statistics increment input
@@ -592,19 +602,24 @@ always @(posedge clk) begin
             // Interface
             8'h40: ctrl_reg_rd_data_reg <= 32'h0000C000;  // Interface: Type
             8'h44: ctrl_reg_rd_data_reg <= 32'h00000100;  // Interface: Version
-            8'h48: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 32'h60 : PHC_RB_BASE_ADDR;  // Interface: Next header
+            8'h48: ctrl_reg_rd_data_reg <= 32'h60;        // Interface: Next header
             8'h4C: ctrl_reg_rd_data_reg <= 32'h0;         // Interface: Offset
             8'h50: ctrl_reg_rd_data_reg <= IF_COUNT;      // Interface: Count
             8'h54: ctrl_reg_rd_data_reg <= 2**AXIL_IF_CTRL_ADDR_WIDTH;  // Interface: Stride
-            8'h58: ctrl_reg_rd_data_reg <= 2**AXIL_CSR_ADDR_WIDTH;  // Interface: CSR offset
+            8'h58: ctrl_reg_rd_data_reg <= 2**AXIL_CSR_ADDR_WIDTH;      // Interface: CSR offset
+            // App info
+            8'h60: ctrl_reg_rd_data_reg <= APP_ENABLE ? 32'h0000C005 : 0;  // App info: Type
+            8'h64: ctrl_reg_rd_data_reg <= APP_ENABLE ? 32'h00000200 : 0;  // App info: Version
+            8'h68: ctrl_reg_rd_data_reg <= 32'h80;                         // App info: Next header
+            8'h6C: ctrl_reg_rd_data_reg <= APP_ENABLE ? APP_ID : 0;        // App info: ID
             // Stats
-            8'h60: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 32'h0000C004 : 0;  // Stats: Type
-            8'h64: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 32'h00000100 : 0;  // Stats: Version
-            8'h68: ctrl_reg_rd_data_reg <= STAT_ENABLE ? PHC_RB_BASE_ADDR : 0;  // Stats: Next header
-            8'h6C: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 2**16 : 0;         // Stats: Offset
-            8'h70: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 2**STAT_ID_WIDTH : 0;  // Stats: Count
-            8'h74: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 8 : 0;             // Stats: Stride
-            8'h78: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 32'h00000000 : 0;  // Stats: Flags
+            8'h80: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 32'h0000C006 : 0;      // Stats: Type
+            8'h84: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 32'h00000100 : 0;      // Stats: Version
+            8'h88: ctrl_reg_rd_data_reg <= PHC_RB_BASE_ADDR;                    // Stats: Next header
+            8'h8C: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 2**16 : 0;             // Stats: Offset
+            8'h90: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 2**STAT_ID_WIDTH : 0;  // Stats: Count
+            8'h94: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 8 : 0;                 // Stats: Stride
+            8'h98: ctrl_reg_rd_data_reg <= STAT_ENABLE ? 32'h00000000 : 0;      // Stats: Flags
             default: ctrl_reg_rd_ack_reg <= 1'b0;
         endcase
     end
@@ -616,12 +631,11 @@ always @(posedge clk) begin
 end
 
 mqnic_ptp #(
-    .PTP_PERIOD_NS_WIDTH(PTP_PERIOD_NS_WIDTH),
-    .PTP_OFFSET_NS_WIDTH(PTP_OFFSET_NS_WIDTH),
-    .PTP_FNS_WIDTH(PTP_FNS_WIDTH),
-    .PTP_PERIOD_NS(PTP_PERIOD_NS),
-    .PTP_PERIOD_FNS(PTP_PERIOD_FNS),
+    .PTP_CLK_PERIOD_NS_NUM(PTP_CLK_PERIOD_NS_NUM),
+    .PTP_CLK_PERIOD_NS_DENOM(PTP_CLK_PERIOD_NS_DENOM),
     .PTP_CLOCK_PIPELINE(PTP_CLOCK_PIPELINE),
+    .PTP_CLOCK_CDC_PIPELINE(PTP_CLOCK_CDC_PIPELINE),
+    .PTP_USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK),
     .PTP_PEROUT_ENABLE(PTP_PEROUT_ENABLE),
     .PTP_PEROUT_COUNT(PTP_PEROUT_COUNT),
     .REG_ADDR_WIDTH(AXIL_CTRL_ADDR_WIDTH),
@@ -652,9 +666,15 @@ mqnic_ptp_inst (
     /*
      * PTP clock
      */
+    .ptp_clk(ptp_clk),
+    .ptp_rst(ptp_rst),
+    .ptp_sample_clk(ptp_sample_clk),
     .ptp_pps(ptp_pps),
     .ptp_ts_96(ptp_ts_96),
     .ptp_ts_step(ptp_ts_step),
+    .ptp_sync_pps(ptp_sync_pps),
+    .ptp_sync_ts_96(ptp_sync_ts_96),
+    .ptp_sync_ts_step(ptp_sync_ts_step),
     .ptp_perout_locked(ptp_perout_locked),
     .ptp_perout_error(ptp_perout_error),
     .ptp_perout_pulse(ptp_perout_pulse)
@@ -1163,6 +1183,8 @@ wire                       ctrl_dma_read_desc_status_valid;
 wire [DMA_ADDR_WIDTH-1:0]  ctrl_dma_write_desc_dma_addr;
 wire [RAM_SEL_WIDTH-2:0]   ctrl_dma_write_desc_ram_sel;
 wire [RAM_ADDR_WIDTH-1:0]  ctrl_dma_write_desc_ram_addr;
+wire [DMA_IMM_WIDTH-1:0]   ctrl_dma_write_desc_imm;
+wire                       ctrl_dma_write_desc_imm_en;
 wire [DMA_LEN_WIDTH-1:0]   ctrl_dma_write_desc_len;
 wire [DMA_TAG_WIDTH-2:0]   ctrl_dma_write_desc_tag;
 wire                       ctrl_dma_write_desc_valid;
@@ -1187,6 +1209,8 @@ wire                       data_dma_read_desc_status_valid;
 wire [DMA_ADDR_WIDTH-1:0]  data_dma_write_desc_dma_addr;
 wire [RAM_SEL_WIDTH-2:0]   data_dma_write_desc_ram_sel;
 wire [RAM_ADDR_WIDTH-1:0]  data_dma_write_desc_ram_addr;
+wire [DMA_IMM_WIDTH-1:0]   data_dma_write_desc_imm;
+wire                       data_dma_write_desc_imm_en;
 wire [DMA_LEN_WIDTH-1:0]   data_dma_write_desc_len;
 wire [DMA_TAG_WIDTH-2:0]   data_dma_write_desc_tag;
 wire                       data_dma_write_desc_valid;
@@ -1236,6 +1260,8 @@ dma_if_mux #(
     .SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
     .SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
     .DMA_ADDR_WIDTH(DMA_ADDR_WIDTH),
+    .IMM_ENABLE(DMA_IMM_ENABLE),
+    .IMM_WIDTH(DMA_IMM_WIDTH),
     .LEN_WIDTH(DMA_LEN_WIDTH),
     .S_TAG_WIDTH(DMA_TAG_WIDTH-1),
     .M_TAG_WIDTH(DMA_TAG_WIDTH),
@@ -1288,6 +1314,8 @@ dma_if_mux_inst (
     .m_axis_write_desc_dma_addr(m_axis_dma_write_desc_dma_addr),
     .m_axis_write_desc_ram_sel(m_axis_dma_write_desc_ram_sel),
     .m_axis_write_desc_ram_addr(m_axis_dma_write_desc_ram_addr),
+    .m_axis_write_desc_imm(m_axis_dma_write_desc_imm),
+    .m_axis_write_desc_imm_en(m_axis_dma_write_desc_imm_en),
     .m_axis_write_desc_len(m_axis_dma_write_desc_len),
     .m_axis_write_desc_tag(m_axis_dma_write_desc_tag),
     .m_axis_write_desc_valid(m_axis_dma_write_desc_valid),
@@ -1306,6 +1334,8 @@ dma_if_mux_inst (
     .s_axis_write_desc_dma_addr({data_dma_write_desc_dma_addr, ctrl_dma_write_desc_dma_addr}),
     .s_axis_write_desc_ram_sel({data_dma_write_desc_ram_sel, ctrl_dma_write_desc_ram_sel}),
     .s_axis_write_desc_ram_addr({data_dma_write_desc_ram_addr, ctrl_dma_write_desc_ram_addr}),
+    .s_axis_write_desc_imm({data_dma_write_desc_imm, ctrl_dma_write_desc_imm}),
+    .s_axis_write_desc_imm_en({data_dma_write_desc_imm_en, ctrl_dma_write_desc_imm_en}),
     .s_axis_write_desc_len({data_dma_write_desc_len, ctrl_dma_write_desc_len}),
     .s_axis_write_desc_tag({data_dma_write_desc_tag, ctrl_dma_write_desc_tag}),
     .s_axis_write_desc_valid({data_dma_write_desc_valid, ctrl_dma_write_desc_valid}),
@@ -1371,6 +1401,8 @@ wire [IF_COUNT_INT-1:0]                   if_ctrl_dma_read_desc_status_valid;
 wire [IF_COUNT_INT*DMA_ADDR_WIDTH-1:0]    if_ctrl_dma_write_desc_dma_addr;
 wire [IF_COUNT_INT*IF_RAM_SEL_WIDTH-1:0]  if_ctrl_dma_write_desc_ram_sel;
 wire [IF_COUNT_INT*RAM_ADDR_WIDTH-1:0]    if_ctrl_dma_write_desc_ram_addr;
+wire [IF_COUNT_INT*DMA_IMM_WIDTH-1:0]     if_ctrl_dma_write_desc_imm;
+wire [IF_COUNT_INT-1:0]                   if_ctrl_dma_write_desc_imm_en;
 wire [IF_COUNT_INT*DMA_LEN_WIDTH-1:0]     if_ctrl_dma_write_desc_len;
 wire [IF_COUNT_INT*IF_DMA_TAG_WIDTH-1:0]  if_ctrl_dma_write_desc_tag;
 wire [IF_COUNT_INT-1:0]                   if_ctrl_dma_write_desc_valid;
@@ -1395,6 +1427,8 @@ wire [IF_COUNT_INT-1:0]                   if_data_dma_read_desc_status_valid;
 wire [IF_COUNT_INT*DMA_ADDR_WIDTH-1:0]    if_data_dma_write_desc_dma_addr;
 wire [IF_COUNT_INT*IF_RAM_SEL_WIDTH-1:0]  if_data_dma_write_desc_ram_sel;
 wire [IF_COUNT_INT*RAM_ADDR_WIDTH-1:0]    if_data_dma_write_desc_ram_addr;
+wire [IF_COUNT_INT*DMA_IMM_WIDTH-1:0]     if_data_dma_write_desc_imm;
+wire [IF_COUNT_INT-1:0]                   if_data_dma_write_desc_imm_en;
 wire [IF_COUNT_INT*DMA_LEN_WIDTH-1:0]     if_data_dma_write_desc_len;
 wire [IF_COUNT_INT*IF_DMA_TAG_WIDTH-1:0]  if_data_dma_write_desc_tag;
 wire [IF_COUNT_INT-1:0]                   if_data_dma_write_desc_valid;
@@ -1448,6 +1482,8 @@ if (IF_COUNT_INT > 1) begin : dma_if_mux
         .SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
         .SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
         .DMA_ADDR_WIDTH(DMA_ADDR_WIDTH),
+        .IMM_ENABLE(DMA_IMM_ENABLE),
+        .IMM_WIDTH(DMA_IMM_WIDTH),
         .LEN_WIDTH(DMA_LEN_WIDTH),
         .S_TAG_WIDTH(IF_DMA_TAG_WIDTH),
         .M_TAG_WIDTH(DMA_TAG_WIDTH-1),
@@ -1500,6 +1536,8 @@ if (IF_COUNT_INT > 1) begin : dma_if_mux
         .m_axis_write_desc_dma_addr(ctrl_dma_write_desc_dma_addr),
         .m_axis_write_desc_ram_sel(ctrl_dma_write_desc_ram_sel),
         .m_axis_write_desc_ram_addr(ctrl_dma_write_desc_ram_addr),
+        .m_axis_write_desc_imm(ctrl_dma_write_desc_imm),
+        .m_axis_write_desc_imm_en(ctrl_dma_write_desc_imm_en),
         .m_axis_write_desc_len(ctrl_dma_write_desc_len),
         .m_axis_write_desc_tag(ctrl_dma_write_desc_tag),
         .m_axis_write_desc_valid(ctrl_dma_write_desc_valid),
@@ -1518,6 +1556,8 @@ if (IF_COUNT_INT > 1) begin : dma_if_mux
         .s_axis_write_desc_dma_addr(if_ctrl_dma_write_desc_dma_addr),
         .s_axis_write_desc_ram_sel(if_ctrl_dma_write_desc_ram_sel),
         .s_axis_write_desc_ram_addr(if_ctrl_dma_write_desc_ram_addr),
+        .s_axis_write_desc_imm(if_ctrl_dma_write_desc_imm),
+        .s_axis_write_desc_imm_en(if_ctrl_dma_write_desc_imm_en),
         .s_axis_write_desc_len(if_ctrl_dma_write_desc_len),
         .s_axis_write_desc_tag(if_ctrl_dma_write_desc_tag),
         .s_axis_write_desc_valid(if_ctrl_dma_write_desc_valid),
@@ -1577,6 +1617,8 @@ if (IF_COUNT_INT > 1) begin : dma_if_mux
         .SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
         .SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
         .DMA_ADDR_WIDTH(DMA_ADDR_WIDTH),
+        .IMM_ENABLE(DMA_IMM_ENABLE),
+        .IMM_WIDTH(DMA_IMM_WIDTH),
         .LEN_WIDTH(DMA_LEN_WIDTH),
         .S_TAG_WIDTH(IF_DMA_TAG_WIDTH),
         .M_TAG_WIDTH(DMA_TAG_WIDTH-1),
@@ -1629,6 +1671,8 @@ if (IF_COUNT_INT > 1) begin : dma_if_mux
         .m_axis_write_desc_dma_addr(data_dma_write_desc_dma_addr),
         .m_axis_write_desc_ram_sel(data_dma_write_desc_ram_sel),
         .m_axis_write_desc_ram_addr(data_dma_write_desc_ram_addr),
+        .m_axis_write_desc_imm(data_dma_write_desc_imm),
+        .m_axis_write_desc_imm_en(data_dma_write_desc_imm_en),
         .m_axis_write_desc_len(data_dma_write_desc_len),
         .m_axis_write_desc_tag(data_dma_write_desc_tag),
         .m_axis_write_desc_valid(data_dma_write_desc_valid),
@@ -1647,6 +1691,8 @@ if (IF_COUNT_INT > 1) begin : dma_if_mux
         .s_axis_write_desc_dma_addr(if_data_dma_write_desc_dma_addr),
         .s_axis_write_desc_ram_sel(if_data_dma_write_desc_ram_sel),
         .s_axis_write_desc_ram_addr(if_data_dma_write_desc_ram_addr),
+        .s_axis_write_desc_imm(if_data_dma_write_desc_imm),
+        .s_axis_write_desc_imm_en(if_data_dma_write_desc_imm_en),
         .s_axis_write_desc_len(if_data_dma_write_desc_len),
         .s_axis_write_desc_tag(if_data_dma_write_desc_tag),
         .s_axis_write_desc_valid(if_data_dma_write_desc_valid),
@@ -1713,6 +1759,8 @@ end else begin
     assign ctrl_dma_write_desc_dma_addr = if_ctrl_dma_write_desc_dma_addr;
     assign ctrl_dma_write_desc_ram_sel = if_ctrl_dma_write_desc_ram_sel;
     assign ctrl_dma_write_desc_ram_addr = if_ctrl_dma_write_desc_ram_addr;
+    assign ctrl_dma_write_desc_imm = if_ctrl_dma_write_desc_imm;
+    assign ctrl_dma_write_desc_imm_en = if_ctrl_dma_write_desc_imm_en;
     assign ctrl_dma_write_desc_len = if_ctrl_dma_write_desc_len;
     assign ctrl_dma_write_desc_tag = if_ctrl_dma_write_desc_tag;
     assign ctrl_dma_write_desc_valid = if_ctrl_dma_write_desc_valid;
@@ -1752,6 +1800,8 @@ end else begin
     assign data_dma_write_desc_dma_addr = if_data_dma_write_desc_dma_addr;
     assign data_dma_write_desc_ram_sel = if_data_dma_write_desc_ram_sel;
     assign data_dma_write_desc_ram_addr = if_data_dma_write_desc_ram_addr;
+    assign data_dma_write_desc_imm = if_data_dma_write_desc_imm;
+    assign data_dma_write_desc_imm_en = if_data_dma_write_desc_imm_en;
     assign data_dma_write_desc_len = if_data_dma_write_desc_len;
     assign data_dma_write_desc_tag = if_data_dma_write_desc_tag;
     assign data_dma_write_desc_valid = if_data_dma_write_desc_valid;
@@ -1795,6 +1845,8 @@ wire                         app_ctrl_dma_read_desc_status_valid;
 wire [DMA_ADDR_WIDTH-1:0]    app_ctrl_dma_write_desc_dma_addr;
 wire [IF_RAM_SEL_WIDTH-1:0]  app_ctrl_dma_write_desc_ram_sel;
 wire [RAM_ADDR_WIDTH-1:0]    app_ctrl_dma_write_desc_ram_addr;
+wire [DMA_IMM_WIDTH-1:0]     app_ctrl_dma_write_desc_imm;
+wire                         app_ctrl_dma_write_desc_imm_en;
 wire [DMA_LEN_WIDTH-1:0]     app_ctrl_dma_write_desc_len;
 wire [IF_DMA_TAG_WIDTH-1:0]  app_ctrl_dma_write_desc_tag;
 wire                         app_ctrl_dma_write_desc_valid;
@@ -1819,6 +1871,8 @@ wire                         app_data_dma_read_desc_status_valid;
 wire [DMA_ADDR_WIDTH-1:0]    app_data_dma_write_desc_dma_addr;
 wire [IF_RAM_SEL_WIDTH-1:0]  app_data_dma_write_desc_ram_sel;
 wire [RAM_ADDR_WIDTH-1:0]    app_data_dma_write_desc_ram_addr;
+wire [DMA_IMM_WIDTH-1:0]     app_data_dma_write_desc_imm;
+wire                         app_data_dma_write_desc_imm_en;
 wire [DMA_LEN_WIDTH-1:0]     app_data_dma_write_desc_len;
 wire [IF_DMA_TAG_WIDTH-1:0]  app_data_dma_write_desc_tag;
 wire                         app_data_dma_write_desc_valid;
@@ -1877,6 +1931,8 @@ if (APP_ENABLE && APP_DMA_ENABLE) begin
     assign if_ctrl_dma_write_desc_dma_addr[IF_COUNT*DMA_ADDR_WIDTH +: DMA_ADDR_WIDTH] = app_ctrl_dma_write_desc_dma_addr;
     assign if_ctrl_dma_write_desc_ram_sel[IF_COUNT*IF_RAM_SEL_WIDTH +: IF_RAM_SEL_WIDTH] = app_ctrl_dma_write_desc_ram_sel;
     assign if_ctrl_dma_write_desc_ram_addr[IF_COUNT*RAM_ADDR_WIDTH +: RAM_ADDR_WIDTH] = app_ctrl_dma_write_desc_ram_addr;
+    assign if_ctrl_dma_write_desc_imm[IF_COUNT*DMA_IMM_WIDTH +: DMA_IMM_WIDTH] = app_ctrl_dma_write_desc_imm;
+    assign if_ctrl_dma_write_desc_imm_en[IF_COUNT] = app_ctrl_dma_write_desc_imm_en;
     assign if_ctrl_dma_write_desc_len[IF_COUNT*DMA_LEN_WIDTH +: DMA_LEN_WIDTH] = app_ctrl_dma_write_desc_len;
     assign if_ctrl_dma_write_desc_tag[IF_COUNT*IF_DMA_TAG_WIDTH +: IF_DMA_TAG_WIDTH] = app_ctrl_dma_write_desc_tag;
     assign if_ctrl_dma_write_desc_valid[IF_COUNT] = app_ctrl_dma_write_desc_valid;
@@ -1901,6 +1957,8 @@ if (APP_ENABLE && APP_DMA_ENABLE) begin
     assign if_data_dma_write_desc_dma_addr[IF_COUNT*DMA_ADDR_WIDTH +: DMA_ADDR_WIDTH] = app_data_dma_write_desc_dma_addr;
     assign if_data_dma_write_desc_ram_sel[IF_COUNT*IF_RAM_SEL_WIDTH +: IF_RAM_SEL_WIDTH] = app_data_dma_write_desc_ram_sel;
     assign if_data_dma_write_desc_ram_addr[IF_COUNT*RAM_ADDR_WIDTH +: RAM_ADDR_WIDTH] = app_data_dma_write_desc_ram_addr;
+    assign if_data_dma_write_desc_imm[IF_COUNT*DMA_IMM_WIDTH +: DMA_IMM_WIDTH] = app_data_dma_write_desc_imm;
+    assign if_data_dma_write_desc_imm_en[IF_COUNT] = app_data_dma_write_desc_imm_en;
     assign if_data_dma_write_desc_len[IF_COUNT*DMA_LEN_WIDTH +: DMA_LEN_WIDTH] = app_data_dma_write_desc_len;
     assign if_data_dma_write_desc_tag[IF_COUNT*IF_DMA_TAG_WIDTH +: IF_DMA_TAG_WIDTH] = app_data_dma_write_desc_tag;
     assign if_data_dma_write_desc_valid[IF_COUNT] = app_data_dma_write_desc_valid;
@@ -2022,15 +2080,15 @@ wire [PORT_COUNT-1:0]                        app_m_axis_direct_tx_tready;
 wire [PORT_COUNT-1:0]                        app_m_axis_direct_tx_tlast;
 wire [PORT_COUNT*AXIS_TX_USER_WIDTH-1:0]     app_m_axis_direct_tx_tuser;
 
-wire [PORT_COUNT*PTP_TS_WIDTH-1:0]           app_s_axis_direct_tx_ptp_ts;
-wire [PORT_COUNT*PTP_TAG_WIDTH-1:0]          app_s_axis_direct_tx_ptp_ts_tag;
-wire [PORT_COUNT-1:0]                        app_s_axis_direct_tx_ptp_ts_valid;
-wire [PORT_COUNT-1:0]                        app_s_axis_direct_tx_ptp_ts_ready;
+wire [PORT_COUNT*PTP_TS_WIDTH-1:0]           app_s_axis_direct_tx_cpl_ts;
+wire [PORT_COUNT*TX_TAG_WIDTH-1:0]           app_s_axis_direct_tx_cpl_tag;
+wire [PORT_COUNT-1:0]                        app_s_axis_direct_tx_cpl_valid;
+wire [PORT_COUNT-1:0]                        app_s_axis_direct_tx_cpl_ready;
 
-wire [PORT_COUNT*PTP_TS_WIDTH-1:0]           app_m_axis_direct_tx_ptp_ts;
-wire [PORT_COUNT*PTP_TAG_WIDTH-1:0]          app_m_axis_direct_tx_ptp_ts_tag;
-wire [PORT_COUNT-1:0]                        app_m_axis_direct_tx_ptp_ts_valid;
-wire [PORT_COUNT-1:0]                        app_m_axis_direct_tx_ptp_ts_ready;
+wire [PORT_COUNT*PTP_TS_WIDTH-1:0]           app_m_axis_direct_tx_cpl_ts;
+wire [PORT_COUNT*TX_TAG_WIDTH-1:0]           app_m_axis_direct_tx_cpl_tag;
+wire [PORT_COUNT-1:0]                        app_m_axis_direct_tx_cpl_valid;
+wire [PORT_COUNT-1:0]                        app_m_axis_direct_tx_cpl_ready;
 
 wire [PORT_COUNT-1:0]                        app_direct_rx_clk;
 wire [PORT_COUNT-1:0]                        app_direct_rx_rst;
@@ -2063,15 +2121,15 @@ wire [PORT_COUNT-1:0]                        app_m_axis_sync_tx_tready;
 wire [PORT_COUNT-1:0]                        app_m_axis_sync_tx_tlast;
 wire [PORT_COUNT*AXIS_TX_USER_WIDTH-1:0]     app_m_axis_sync_tx_tuser;
 
-wire [PORT_COUNT*PTP_TS_WIDTH-1:0]           app_s_axis_sync_tx_ptp_ts;
-wire [PORT_COUNT*PTP_TAG_WIDTH-1:0]          app_s_axis_sync_tx_ptp_ts_tag;
-wire [PORT_COUNT-1:0]                        app_s_axis_sync_tx_ptp_ts_valid;
-wire [PORT_COUNT-1:0]                        app_s_axis_sync_tx_ptp_ts_ready;
+wire [PORT_COUNT*PTP_TS_WIDTH-1:0]           app_s_axis_sync_tx_cpl_ts;
+wire [PORT_COUNT*TX_TAG_WIDTH-1:0]           app_s_axis_sync_tx_cpl_tag;
+wire [PORT_COUNT-1:0]                        app_s_axis_sync_tx_cpl_valid;
+wire [PORT_COUNT-1:0]                        app_s_axis_sync_tx_cpl_ready;
 
-wire [PORT_COUNT*PTP_TS_WIDTH-1:0]           app_m_axis_sync_tx_ptp_ts;
-wire [PORT_COUNT*PTP_TAG_WIDTH-1:0]          app_m_axis_sync_tx_ptp_ts_tag;
-wire [PORT_COUNT-1:0]                        app_m_axis_sync_tx_ptp_ts_valid;
-wire [PORT_COUNT-1:0]                        app_m_axis_sync_tx_ptp_ts_ready;
+wire [PORT_COUNT*PTP_TS_WIDTH-1:0]           app_m_axis_sync_tx_cpl_ts;
+wire [PORT_COUNT*TX_TAG_WIDTH-1:0]           app_m_axis_sync_tx_cpl_tag;
+wire [PORT_COUNT-1:0]                        app_m_axis_sync_tx_cpl_valid;
+wire [PORT_COUNT-1:0]                        app_m_axis_sync_tx_cpl_ready;
 
 wire [PORT_COUNT*AXIS_SYNC_DATA_WIDTH-1:0]   app_s_axis_sync_rx_tdata;
 wire [PORT_COUNT*AXIS_SYNC_KEEP_WIDTH-1:0]   app_s_axis_sync_rx_tkeep;
@@ -2105,15 +2163,15 @@ wire [IF_COUNT*AXIS_IF_TX_ID_WIDTH-1:0]      app_m_axis_if_tx_tid;
 wire [IF_COUNT*AXIS_IF_TX_DEST_WIDTH-1:0]    app_m_axis_if_tx_tdest;
 wire [IF_COUNT*AXIS_IF_TX_USER_WIDTH-1:0]    app_m_axis_if_tx_tuser;
 
-wire [IF_COUNT*PTP_TS_WIDTH-1:0]             app_s_axis_if_tx_ptp_ts;
-wire [IF_COUNT*PTP_TAG_WIDTH-1:0]            app_s_axis_if_tx_ptp_ts_tag;
-wire [IF_COUNT-1:0]                          app_s_axis_if_tx_ptp_ts_valid;
-wire [IF_COUNT-1:0]                          app_s_axis_if_tx_ptp_ts_ready;
+wire [IF_COUNT*PTP_TS_WIDTH-1:0]             app_s_axis_if_tx_cpl_ts;
+wire [IF_COUNT*TX_TAG_WIDTH-1:0]             app_s_axis_if_tx_cpl_tag;
+wire [IF_COUNT-1:0]                          app_s_axis_if_tx_cpl_valid;
+wire [IF_COUNT-1:0]                          app_s_axis_if_tx_cpl_ready;
 
-wire [IF_COUNT*PTP_TS_WIDTH-1:0]             app_m_axis_if_tx_ptp_ts;
-wire [IF_COUNT*PTP_TAG_WIDTH-1:0]            app_m_axis_if_tx_ptp_ts_tag;
-wire [IF_COUNT-1:0]                          app_m_axis_if_tx_ptp_ts_valid;
-wire [IF_COUNT-1:0]                          app_m_axis_if_tx_ptp_ts_ready;
+wire [IF_COUNT*PTP_TS_WIDTH-1:0]             app_m_axis_if_tx_cpl_ts;
+wire [IF_COUNT*TX_TAG_WIDTH-1:0]             app_m_axis_if_tx_cpl_tag;
+wire [IF_COUNT-1:0]                          app_m_axis_if_tx_cpl_valid;
+wire [IF_COUNT-1:0]                          app_m_axis_if_tx_cpl_ready;
 
 wire [IF_COUNT*AXIS_IF_DATA_WIDTH-1:0]       app_s_axis_if_rx_tdata;
 wire [IF_COUNT*AXIS_IF_KEEP_WIDTH-1:0]       app_s_axis_if_rx_tkeep;
@@ -2138,35 +2196,21 @@ generate
 
     for (n = 0; n < IF_COUNT; n = n + 1) begin : iface
 
-        wire [AXIS_IF_DATA_WIDTH-1:0] if_tx_axis_tdata;
-        wire [AXIS_IF_KEEP_WIDTH-1:0] if_tx_axis_tkeep;
-        wire if_tx_axis_tvalid;
-        wire if_tx_axis_tready;
-        wire if_tx_axis_tlast;
-        wire [AXIS_IF_TX_ID_WIDTH-1:0] if_tx_axis_tid;
-        wire [AXIS_IF_TX_DEST_WIDTH-1:0] if_tx_axis_tdest;
-        wire [AXIS_IF_TX_USER_WIDTH-1:0] if_tx_axis_tuser;
+        wire [PORTS_PER_IF-1:0] if_tx_clk;
+        wire [PORTS_PER_IF-1:0] if_tx_rst;
 
-        wire [PTP_TS_WIDTH-1:0] if_tx_ptp_ts;
-        wire [PTP_TAG_WIDTH-1:0] if_tx_ptp_ts_tag;
-        wire if_tx_ptp_ts_valid;
-        wire if_tx_ptp_ts_ready;
-
-        wire [AXIS_IF_DATA_WIDTH-1:0] if_rx_axis_tdata;
-        wire [AXIS_IF_KEEP_WIDTH-1:0] if_rx_axis_tkeep;
-        wire if_rx_axis_tvalid;
-        wire if_rx_axis_tready;
-        wire if_rx_axis_tlast;
-        wire [AXIS_IF_RX_ID_WIDTH-1:0] if_rx_axis_tid;
-        wire [AXIS_IF_RX_DEST_WIDTH-1:0] if_rx_axis_tdest;
-        wire [AXIS_IF_RX_USER_WIDTH-1:0] if_rx_axis_tuser;
+        wire [PORTS_PER_IF-1:0] if_rx_clk;
+        wire [PORTS_PER_IF-1:0] if_rx_rst;
 
         mqnic_interface #(
+            // Structural configuration
             .PORTS(PORTS_PER_IF),
             .SCHEDULERS(SCHED_PER_IF),
-            .DMA_ADDR_WIDTH(DMA_ADDR_WIDTH),
-            .DMA_LEN_WIDTH(DMA_LEN_WIDTH),
-            .DMA_TAG_WIDTH(IF_DMA_TAG_WIDTH),
+
+            // PTP configuration
+            .PTP_TS_WIDTH(PTP_TS_WIDTH),
+
+            // Queue manager configuration
             .EVENT_QUEUE_OP_TABLE_SIZE(EVENT_QUEUE_OP_TABLE_SIZE),
             .TX_QUEUE_OP_TABLE_SIZE(TX_QUEUE_OP_TABLE_SIZE),
             .RX_QUEUE_OP_TABLE_SIZE(RX_QUEUE_OP_TABLE_SIZE),
@@ -2182,47 +2226,94 @@ generate
             .RX_QUEUE_PIPELINE(RX_QUEUE_PIPELINE),
             .TX_CPL_QUEUE_PIPELINE(TX_CPL_QUEUE_PIPELINE),
             .RX_CPL_QUEUE_PIPELINE(RX_CPL_QUEUE_PIPELINE),
-            .TX_DESC_TABLE_SIZE(TX_DESC_TABLE_SIZE),
-            .RX_DESC_TABLE_SIZE(RX_DESC_TABLE_SIZE),
+            .QUEUE_PTR_WIDTH(16),
+            .LOG_QUEUE_SIZE_WIDTH(4),
+            .LOG_BLOCK_SIZE_WIDTH(2),
+
+            // Descriptor management
             .TX_MAX_DESC_REQ(16),
             .TX_DESC_FIFO_SIZE(16*8),
             .RX_MAX_DESC_REQ(16),
             .RX_DESC_FIFO_SIZE(16*8),
+
+            // TX and RX engine configuration
+            .TX_DESC_TABLE_SIZE(TX_DESC_TABLE_SIZE),
+            .RX_DESC_TABLE_SIZE(RX_DESC_TABLE_SIZE),
+
+            // Scheduler configuration
             .TX_SCHEDULER_OP_TABLE_SIZE(TX_SCHEDULER_OP_TABLE_SIZE),
             .TX_SCHEDULER_PIPELINE(TX_SCHEDULER_PIPELINE),
             .TDMA_INDEX_WIDTH(TDMA_INDEX_WIDTH),
-            .INT_WIDTH(8),
-            .QUEUE_PTR_WIDTH(16),
-            .LOG_QUEUE_SIZE_WIDTH(4),
-            .LOG_BLOCK_SIZE_WIDTH(2),
+
+            // Interface configuration
             .PTP_TS_ENABLE(PTP_TS_ENABLE),
-            .PTP_TS_WIDTH(PTP_TS_WIDTH),
+            .TX_CPL_ENABLE(TX_CPL_ENABLE),
+            .TX_CPL_FIFO_DEPTH(TX_CPL_FIFO_DEPTH),
+            .TX_TAG_WIDTH(TX_TAG_WIDTH),
             .TX_CHECKSUM_ENABLE(TX_CHECKSUM_ENABLE),
             .RX_RSS_ENABLE(RX_RSS_ENABLE),
             .RX_HASH_ENABLE(RX_HASH_ENABLE),
             .RX_CHECKSUM_ENABLE(RX_CHECKSUM_ENABLE),
-            .AXIL_DATA_WIDTH(AXIL_CTRL_DATA_WIDTH),
-            .AXIL_ADDR_WIDTH(AXIL_IF_CTRL_ADDR_WIDTH),
-            .AXIL_STRB_WIDTH(AXIL_CTRL_STRB_WIDTH),
-            .RAM_SEL_WIDTH(IF_RAM_SEL_WIDTH),
-            .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
-            .SEG_COUNT(RAM_SEG_COUNT),
-            .SEG_DATA_WIDTH(RAM_SEG_DATA_WIDTH),
-            .SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
-            .SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
-            .RAM_PIPELINE(RAM_PIPELINE),
-            .AXIS_DATA_WIDTH(AXIS_IF_DATA_WIDTH),
-            .AXIS_KEEP_WIDTH(AXIS_IF_KEEP_WIDTH),
-            .AXIS_TX_ID_WIDTH(AXIS_IF_TX_ID_WIDTH),
-            .AXIS_RX_ID_WIDTH(AXIS_IF_RX_ID_WIDTH),
-            .AXIS_TX_DEST_WIDTH(AXIS_IF_TX_DEST_WIDTH),
-            .AXIS_RX_DEST_WIDTH(AXIS_IF_RX_DEST_WIDTH),
-            .AXIS_TX_USER_WIDTH(AXIS_IF_TX_USER_WIDTH),
-            .AXIS_RX_USER_WIDTH(AXIS_IF_RX_USER_WIDTH),
+            .TX_FIFO_DEPTH(TX_FIFO_DEPTH),
+            .RX_FIFO_DEPTH(RX_FIFO_DEPTH),
             .MAX_TX_SIZE(MAX_TX_SIZE),
             .MAX_RX_SIZE(MAX_RX_SIZE),
             .TX_RAM_SIZE(TX_RAM_SIZE),
-            .RX_RAM_SIZE(RX_RAM_SIZE)
+            .RX_RAM_SIZE(RX_RAM_SIZE),
+
+            // Application block configuration
+            .APP_AXIS_DIRECT_ENABLE(APP_ENABLE && APP_AXIS_DIRECT_ENABLE),
+            .APP_AXIS_SYNC_ENABLE(APP_ENABLE && APP_AXIS_SYNC_ENABLE),
+            .APP_AXIS_IF_ENABLE(APP_ENABLE && APP_AXIS_IF_ENABLE),
+
+            // DMA interface configuration
+            .DMA_ADDR_WIDTH(DMA_ADDR_WIDTH),
+            .DMA_IMM_ENABLE(DMA_IMM_ENABLE),
+            .DMA_IMM_WIDTH(DMA_IMM_WIDTH),
+            .DMA_LEN_WIDTH(DMA_LEN_WIDTH),
+            .DMA_TAG_WIDTH(DMA_TAG_WIDTH),
+            .RAM_SEL_WIDTH(RAM_SEL_WIDTH),
+            .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
+            .RAM_SEG_COUNT(RAM_SEG_COUNT),
+            .RAM_SEG_DATA_WIDTH(RAM_SEG_DATA_WIDTH),
+            .RAM_SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
+            .RAM_SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
+            .RAM_PIPELINE(RAM_PIPELINE),
+
+            .MSI_COUNT(MSI_COUNT),
+
+            // AXI lite interface configuration
+            .AXIL_DATA_WIDTH(AXIL_CTRL_DATA_WIDTH),
+            .AXIL_ADDR_WIDTH(AXIL_IF_CTRL_ADDR_WIDTH),
+            .AXIL_STRB_WIDTH(AXIL_CTRL_STRB_WIDTH),
+
+            // Streaming interface configuration (direct, async)
+            .AXIS_DATA_WIDTH(AXIS_DATA_WIDTH),
+            .AXIS_KEEP_WIDTH(AXIS_KEEP_WIDTH),
+            .AXIS_TX_USER_WIDTH(AXIS_TX_USER_WIDTH),
+            .AXIS_RX_USER_WIDTH(AXIS_RX_USER_WIDTH),
+            .AXIS_RX_USE_READY(AXIS_RX_USE_READY),
+            .AXIS_TX_PIPELINE(AXIS_TX_PIPELINE),
+            .AXIS_TX_FIFO_PIPELINE(AXIS_TX_FIFO_PIPELINE),
+            .AXIS_TX_TS_PIPELINE(AXIS_TX_TS_PIPELINE),
+            .AXIS_RX_PIPELINE(AXIS_RX_PIPELINE),
+            .AXIS_RX_FIFO_PIPELINE(AXIS_RX_FIFO_PIPELINE),
+
+            // Streaming interface configuration (direct, sync)
+            .AXIS_SYNC_DATA_WIDTH(AXIS_SYNC_DATA_WIDTH),
+            .AXIS_SYNC_KEEP_WIDTH(AXIS_SYNC_KEEP_WIDTH),
+            .AXIS_SYNC_TX_USER_WIDTH(AXIS_TX_USER_WIDTH),
+            .AXIS_SYNC_RX_USER_WIDTH(AXIS_RX_USER_WIDTH),
+
+            // Streaming interface configuration (interface)
+            .AXIS_IF_DATA_WIDTH(AXIS_IF_DATA_WIDTH),
+            .AXIS_IF_KEEP_WIDTH(AXIS_IF_KEEP_WIDTH),
+            .AXIS_IF_TX_ID_WIDTH(AXIS_IF_TX_ID_WIDTH),
+            .AXIS_IF_RX_ID_WIDTH(AXIS_IF_RX_ID_WIDTH),
+            .AXIS_IF_TX_DEST_WIDTH(AXIS_IF_TX_DEST_WIDTH),
+            .AXIS_IF_RX_DEST_WIDTH(AXIS_IF_RX_DEST_WIDTH),
+            .AXIS_IF_TX_USER_WIDTH(AXIS_IF_TX_USER_WIDTH),
+            .AXIS_IF_RX_USER_WIDTH(AXIS_IF_RX_USER_WIDTH)
         )
         interface_inst (
             .clk(clk),
@@ -2252,6 +2343,8 @@ generate
             .m_axis_ctrl_dma_write_desc_dma_addr(if_ctrl_dma_write_desc_dma_addr[n*DMA_ADDR_WIDTH +: DMA_ADDR_WIDTH]),
             .m_axis_ctrl_dma_write_desc_ram_sel(if_ctrl_dma_write_desc_ram_sel[n*IF_RAM_SEL_WIDTH +: IF_RAM_SEL_WIDTH]),
             .m_axis_ctrl_dma_write_desc_ram_addr(if_ctrl_dma_write_desc_ram_addr[n*RAM_ADDR_WIDTH +: RAM_ADDR_WIDTH]),
+            .m_axis_ctrl_dma_write_desc_imm(if_ctrl_dma_write_desc_imm[n*DMA_IMM_WIDTH +: DMA_IMM_WIDTH]),
+            .m_axis_ctrl_dma_write_desc_imm_en(if_ctrl_dma_write_desc_imm_en[n]),
             .m_axis_ctrl_dma_write_desc_len(if_ctrl_dma_write_desc_len[n*DMA_LEN_WIDTH +: DMA_LEN_WIDTH]),
             .m_axis_ctrl_dma_write_desc_tag(if_ctrl_dma_write_desc_tag[n*IF_DMA_TAG_WIDTH +: IF_DMA_TAG_WIDTH]),
             .m_axis_ctrl_dma_write_desc_valid(if_ctrl_dma_write_desc_valid[n]),
@@ -2288,6 +2381,8 @@ generate
             .m_axis_data_dma_write_desc_dma_addr(if_data_dma_write_desc_dma_addr[n*DMA_ADDR_WIDTH +: DMA_ADDR_WIDTH]),
             .m_axis_data_dma_write_desc_ram_sel(if_data_dma_write_desc_ram_sel[n*IF_RAM_SEL_WIDTH +: IF_RAM_SEL_WIDTH]),
             .m_axis_data_dma_write_desc_ram_addr(if_data_dma_write_desc_ram_addr[n*RAM_ADDR_WIDTH +: RAM_ADDR_WIDTH]),
+            .m_axis_data_dma_write_desc_imm(if_data_dma_write_desc_imm[n*DMA_IMM_WIDTH +: DMA_IMM_WIDTH]),
+            .m_axis_data_dma_write_desc_imm_en(if_data_dma_write_desc_imm_en[n]),
             .m_axis_data_dma_write_desc_len(if_data_dma_write_desc_len[n*DMA_LEN_WIDTH +: DMA_LEN_WIDTH]),
             .m_axis_data_dma_write_desc_tag(if_data_dma_write_desc_tag[n*IF_DMA_TAG_WIDTH +: IF_DMA_TAG_WIDTH]),
             .m_axis_data_dma_write_desc_valid(if_data_dma_write_desc_valid[n]),
@@ -2383,380 +2478,182 @@ generate
             .data_dma_ram_rd_resp_ready(if_data_dma_ram_rd_resp_ready[RAM_SEG_COUNT*n +: RAM_SEG_COUNT]),
 
             /*
-             * Transmit data output
+             * Application section datapath interface (interface-level connection)
              */
-            .tx_axis_tdata(if_tx_axis_tdata),
-            .tx_axis_tkeep(if_tx_axis_tkeep),
-            .tx_axis_tvalid(if_tx_axis_tvalid),
-            .tx_axis_tready(if_tx_axis_tready),
-            .tx_axis_tlast(if_tx_axis_tlast),
-            .tx_axis_tid(if_tx_axis_tid),
-            .tx_axis_tdest(if_tx_axis_tdest),
-            .tx_axis_tuser(if_tx_axis_tuser),
+            .m_axis_app_if_tx_tdata(app_s_axis_if_tx_tdata[n*AXIS_IF_DATA_WIDTH +: AXIS_IF_DATA_WIDTH]),
+            .m_axis_app_if_tx_tkeep(app_s_axis_if_tx_tkeep[n*AXIS_IF_KEEP_WIDTH +: AXIS_IF_KEEP_WIDTH]),
+            .m_axis_app_if_tx_tvalid(app_s_axis_if_tx_tvalid[n +: 1]),
+            .m_axis_app_if_tx_tready(app_s_axis_if_tx_tready[n +: 1]),
+            .m_axis_app_if_tx_tlast(app_s_axis_if_tx_tlast[n +: 1]),
+            .m_axis_app_if_tx_tid(app_s_axis_if_tx_tid[n*AXIS_IF_TX_ID_WIDTH +: AXIS_IF_TX_ID_WIDTH]),
+            .m_axis_app_if_tx_tdest(app_s_axis_if_tx_tdest[n*AXIS_IF_TX_DEST_WIDTH +: AXIS_IF_TX_DEST_WIDTH]),
+            .m_axis_app_if_tx_tuser(app_s_axis_if_tx_tuser[n*AXIS_IF_TX_USER_WIDTH +: AXIS_IF_TX_USER_WIDTH]),
+
+            .s_axis_app_if_tx_tdata(app_m_axis_if_tx_tdata[n*AXIS_IF_DATA_WIDTH +: AXIS_IF_DATA_WIDTH]),
+            .s_axis_app_if_tx_tkeep(app_m_axis_if_tx_tkeep[n*AXIS_IF_KEEP_WIDTH +: AXIS_IF_KEEP_WIDTH]),
+            .s_axis_app_if_tx_tvalid(app_m_axis_if_tx_tvalid[n +: 1]),
+            .s_axis_app_if_tx_tready(app_m_axis_if_tx_tready[n +: 1]),
+            .s_axis_app_if_tx_tlast(app_m_axis_if_tx_tlast[n +: 1]),
+            .s_axis_app_if_tx_tid(app_m_axis_if_tx_tid[n*AXIS_IF_TX_ID_WIDTH +: AXIS_IF_TX_ID_WIDTH]),
+            .s_axis_app_if_tx_tdest(app_m_axis_if_tx_tdest[n*AXIS_IF_TX_DEST_WIDTH +: AXIS_IF_TX_DEST_WIDTH]),
+            .s_axis_app_if_tx_tuser(app_m_axis_if_tx_tuser[n*AXIS_IF_TX_USER_WIDTH +: AXIS_IF_TX_USER_WIDTH]),
+
+            .m_axis_app_if_tx_cpl_ts(app_s_axis_if_tx_cpl_ts[n*PTP_TS_WIDTH +: PTP_TS_WIDTH]),
+            .m_axis_app_if_tx_cpl_tag(app_s_axis_if_tx_cpl_tag[n*TX_TAG_WIDTH +: TX_TAG_WIDTH]),
+            .m_axis_app_if_tx_cpl_valid(app_s_axis_if_tx_cpl_valid[n +: 1]),
+            .m_axis_app_if_tx_cpl_ready(app_s_axis_if_tx_cpl_ready[n +: 1]),
+
+            .s_axis_app_if_tx_cpl_ts(app_m_axis_if_tx_cpl_ts[n*PTP_TS_WIDTH +: PTP_TS_WIDTH]),
+            .s_axis_app_if_tx_cpl_tag(app_m_axis_if_tx_cpl_tag[n*TX_TAG_WIDTH +: TX_TAG_WIDTH]),
+            .s_axis_app_if_tx_cpl_valid(app_m_axis_if_tx_cpl_valid[n +: 1]),
+            .s_axis_app_if_tx_cpl_ready(app_m_axis_if_tx_cpl_ready[n +: 1]),
+
+            .m_axis_app_if_rx_tdata(app_s_axis_if_rx_tdata[n*AXIS_IF_DATA_WIDTH +: AXIS_IF_DATA_WIDTH]),
+            .m_axis_app_if_rx_tkeep(app_s_axis_if_rx_tkeep[n*AXIS_IF_KEEP_WIDTH +: AXIS_IF_KEEP_WIDTH]),
+            .m_axis_app_if_rx_tvalid(app_s_axis_if_rx_tvalid[n +: 1]),
+            .m_axis_app_if_rx_tready(app_s_axis_if_rx_tready[n +: 1]),
+            .m_axis_app_if_rx_tlast(app_s_axis_if_rx_tlast[n +: 1]),
+            .m_axis_app_if_rx_tid(app_s_axis_if_rx_tid[n*AXIS_IF_RX_ID_WIDTH +: AXIS_IF_RX_ID_WIDTH]),
+            .m_axis_app_if_rx_tdest(app_s_axis_if_rx_tdest[n*AXIS_IF_RX_DEST_WIDTH +: AXIS_IF_RX_DEST_WIDTH]),
+            .m_axis_app_if_rx_tuser(app_s_axis_if_rx_tuser[n*AXIS_IF_RX_USER_WIDTH +: AXIS_IF_RX_USER_WIDTH]),
+
+            .s_axis_app_if_rx_tdata(app_m_axis_if_rx_tdata[n*AXIS_IF_DATA_WIDTH +: AXIS_IF_DATA_WIDTH]),
+            .s_axis_app_if_rx_tkeep(app_m_axis_if_rx_tkeep[n*AXIS_IF_KEEP_WIDTH +: AXIS_IF_KEEP_WIDTH]),
+            .s_axis_app_if_rx_tvalid(app_m_axis_if_rx_tvalid[n +: 1]),
+            .s_axis_app_if_rx_tready(app_m_axis_if_rx_tready[n +: 1]),
+            .s_axis_app_if_rx_tlast(app_m_axis_if_rx_tlast[n +: 1]),
+            .s_axis_app_if_rx_tid(app_m_axis_if_rx_tid[n*AXIS_IF_RX_ID_WIDTH +: AXIS_IF_RX_ID_WIDTH]),
+            .s_axis_app_if_rx_tdest(app_m_axis_if_rx_tdest[n*AXIS_IF_RX_DEST_WIDTH +: AXIS_IF_RX_DEST_WIDTH]),
+            .s_axis_app_if_rx_tuser(app_m_axis_if_rx_tuser[n*AXIS_IF_RX_USER_WIDTH +: AXIS_IF_RX_USER_WIDTH]),
 
             /*
-             * Transmit timestamp input
+             * Application section datapath interface (synchronous MAC connection)
              */
-            .s_axis_tx_ptp_ts(if_tx_ptp_ts),
-            .s_axis_tx_ptp_ts_tag(if_tx_ptp_ts_tag),
-            .s_axis_tx_ptp_ts_valid(if_tx_ptp_ts_valid),
-            .s_axis_tx_ptp_ts_ready(if_tx_ptp_ts_ready),
+            .m_axis_app_sync_tx_tdata(app_s_axis_sync_tx_tdata[n*PORTS_PER_IF*AXIS_SYNC_DATA_WIDTH +: PORTS_PER_IF*AXIS_SYNC_DATA_WIDTH]),
+            .m_axis_app_sync_tx_tkeep(app_s_axis_sync_tx_tkeep[n*PORTS_PER_IF*AXIS_SYNC_KEEP_WIDTH +: PORTS_PER_IF*AXIS_SYNC_KEEP_WIDTH]),
+            .m_axis_app_sync_tx_tvalid(app_s_axis_sync_tx_tvalid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_sync_tx_tready(app_s_axis_sync_tx_tready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_sync_tx_tlast(app_s_axis_sync_tx_tlast[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_sync_tx_tuser(app_s_axis_sync_tx_tuser[n*PORTS_PER_IF*AXIS_TX_USER_WIDTH +: PORTS_PER_IF*AXIS_TX_USER_WIDTH]),
+
+            .s_axis_app_sync_tx_tdata(app_m_axis_sync_tx_tdata[n*PORTS_PER_IF*AXIS_SYNC_DATA_WIDTH +: PORTS_PER_IF*AXIS_SYNC_DATA_WIDTH]),
+            .s_axis_app_sync_tx_tkeep(app_m_axis_sync_tx_tkeep[n*PORTS_PER_IF*AXIS_SYNC_KEEP_WIDTH +: PORTS_PER_IF*AXIS_SYNC_KEEP_WIDTH]),
+            .s_axis_app_sync_tx_tvalid(app_m_axis_sync_tx_tvalid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_sync_tx_tready(app_m_axis_sync_tx_tready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_sync_tx_tlast(app_m_axis_sync_tx_tlast[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_sync_tx_tuser(app_m_axis_sync_tx_tuser[n*PORTS_PER_IF*AXIS_TX_USER_WIDTH +: PORTS_PER_IF*AXIS_TX_USER_WIDTH]),
+
+            .m_axis_app_sync_tx_cpl_ts(app_s_axis_sync_tx_cpl_ts[n*PORTS_PER_IF*PTP_TS_WIDTH +: PORTS_PER_IF*PTP_TS_WIDTH]),
+            .m_axis_app_sync_tx_cpl_tag(app_s_axis_sync_tx_cpl_tag[n*PORTS_PER_IF*TX_TAG_WIDTH +: PORTS_PER_IF*TX_TAG_WIDTH]),
+            .m_axis_app_sync_tx_cpl_valid(app_s_axis_sync_tx_cpl_valid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_sync_tx_cpl_ready(app_s_axis_sync_tx_cpl_ready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+
+            .s_axis_app_sync_tx_cpl_ts(app_m_axis_sync_tx_cpl_ts[n*PORTS_PER_IF*PTP_TS_WIDTH +: PORTS_PER_IF*PTP_TS_WIDTH]),
+            .s_axis_app_sync_tx_cpl_tag(app_m_axis_sync_tx_cpl_tag[n*PORTS_PER_IF*TX_TAG_WIDTH +: PORTS_PER_IF*TX_TAG_WIDTH]),
+            .s_axis_app_sync_tx_cpl_valid(app_m_axis_sync_tx_cpl_valid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_sync_tx_cpl_ready(app_m_axis_sync_tx_cpl_ready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+
+            .m_axis_app_sync_rx_tdata(app_s_axis_sync_rx_tdata[n*PORTS_PER_IF*AXIS_SYNC_DATA_WIDTH +: PORTS_PER_IF*AXIS_SYNC_DATA_WIDTH]),
+            .m_axis_app_sync_rx_tkeep(app_s_axis_sync_rx_tkeep[n*PORTS_PER_IF*AXIS_SYNC_KEEP_WIDTH +: PORTS_PER_IF*AXIS_SYNC_KEEP_WIDTH]),
+            .m_axis_app_sync_rx_tvalid(app_s_axis_sync_rx_tvalid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_sync_rx_tready(app_s_axis_sync_rx_tready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_sync_rx_tlast(app_s_axis_sync_rx_tlast[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_sync_rx_tuser(app_s_axis_sync_rx_tuser[n*PORTS_PER_IF*AXIS_RX_USER_WIDTH +: PORTS_PER_IF*AXIS_RX_USER_WIDTH]),
+
+            .s_axis_app_sync_rx_tdata(app_m_axis_sync_rx_tdata[n*PORTS_PER_IF*AXIS_SYNC_DATA_WIDTH +: PORTS_PER_IF*AXIS_SYNC_DATA_WIDTH]),
+            .s_axis_app_sync_rx_tkeep(app_m_axis_sync_rx_tkeep[n*PORTS_PER_IF*AXIS_SYNC_KEEP_WIDTH +: PORTS_PER_IF*AXIS_SYNC_KEEP_WIDTH]),
+            .s_axis_app_sync_rx_tvalid(app_m_axis_sync_rx_tvalid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_sync_rx_tready(app_m_axis_sync_rx_tready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_sync_rx_tlast(app_m_axis_sync_rx_tlast[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_sync_rx_tuser(app_m_axis_sync_rx_tuser[n*PORTS_PER_IF*AXIS_RX_USER_WIDTH +: PORTS_PER_IF*AXIS_RX_USER_WIDTH]),
+
+            /*
+             * Application section datapath interface (direct MAC connection)
+             */
+            .m_axis_app_direct_tx_tdata(app_s_axis_direct_tx_tdata[n*PORTS_PER_IF*AXIS_DATA_WIDTH +: PORTS_PER_IF*AXIS_DATA_WIDTH]),
+            .m_axis_app_direct_tx_tkeep(app_s_axis_direct_tx_tkeep[n*PORTS_PER_IF*AXIS_KEEP_WIDTH +: PORTS_PER_IF*AXIS_KEEP_WIDTH]),
+            .m_axis_app_direct_tx_tvalid(app_s_axis_direct_tx_tvalid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_direct_tx_tready(app_s_axis_direct_tx_tready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_direct_tx_tlast(app_s_axis_direct_tx_tlast[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_direct_tx_tuser(app_s_axis_direct_tx_tuser[n*PORTS_PER_IF*AXIS_TX_USER_WIDTH +: PORTS_PER_IF*AXIS_TX_USER_WIDTH]),
+
+            .s_axis_app_direct_tx_tdata(app_m_axis_direct_tx_tdata[n*PORTS_PER_IF*AXIS_DATA_WIDTH +: PORTS_PER_IF*AXIS_DATA_WIDTH]),
+            .s_axis_app_direct_tx_tkeep(app_m_axis_direct_tx_tkeep[n*PORTS_PER_IF*AXIS_KEEP_WIDTH +: PORTS_PER_IF*AXIS_KEEP_WIDTH]),
+            .s_axis_app_direct_tx_tvalid(app_m_axis_direct_tx_tvalid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_direct_tx_tready(app_m_axis_direct_tx_tready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_direct_tx_tlast(app_m_axis_direct_tx_tlast[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_direct_tx_tuser(app_m_axis_direct_tx_tuser[n*PORTS_PER_IF*AXIS_TX_USER_WIDTH +: PORTS_PER_IF*AXIS_TX_USER_WIDTH]),
+
+            .m_axis_app_direct_tx_cpl_ts(app_s_axis_direct_tx_cpl_ts[n*PORTS_PER_IF*PTP_TS_WIDTH +: PORTS_PER_IF*PTP_TS_WIDTH]),
+            .m_axis_app_direct_tx_cpl_tag(app_s_axis_direct_tx_cpl_tag[n*PORTS_PER_IF*TX_TAG_WIDTH +: PORTS_PER_IF*TX_TAG_WIDTH]),
+            .m_axis_app_direct_tx_cpl_valid(app_s_axis_direct_tx_cpl_valid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_direct_tx_cpl_ready(app_s_axis_direct_tx_cpl_ready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+
+            .s_axis_app_direct_tx_cpl_ts(app_m_axis_direct_tx_cpl_ts[n*PORTS_PER_IF*PTP_TS_WIDTH +: PORTS_PER_IF*PTP_TS_WIDTH]),
+            .s_axis_app_direct_tx_cpl_tag(app_m_axis_direct_tx_cpl_tag[n*PORTS_PER_IF*TX_TAG_WIDTH +: PORTS_PER_IF*TX_TAG_WIDTH]),
+            .s_axis_app_direct_tx_cpl_valid(app_m_axis_direct_tx_cpl_valid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_direct_tx_cpl_ready(app_m_axis_direct_tx_cpl_ready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+
+            .m_axis_app_direct_rx_tdata(app_s_axis_direct_rx_tdata[n*PORTS_PER_IF*AXIS_DATA_WIDTH +: PORTS_PER_IF*AXIS_DATA_WIDTH]),
+            .m_axis_app_direct_rx_tkeep(app_s_axis_direct_rx_tkeep[n*PORTS_PER_IF*AXIS_KEEP_WIDTH +: PORTS_PER_IF*AXIS_KEEP_WIDTH]),
+            .m_axis_app_direct_rx_tvalid(app_s_axis_direct_rx_tvalid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_direct_rx_tready(app_s_axis_direct_rx_tready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_direct_rx_tlast(app_s_axis_direct_rx_tlast[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_app_direct_rx_tuser(app_s_axis_direct_rx_tuser[n*PORTS_PER_IF*AXIS_RX_USER_WIDTH +: PORTS_PER_IF*AXIS_RX_USER_WIDTH]),
+
+            .s_axis_app_direct_rx_tdata(app_m_axis_direct_rx_tdata[n*PORTS_PER_IF*AXIS_DATA_WIDTH +: PORTS_PER_IF*AXIS_DATA_WIDTH]),
+            .s_axis_app_direct_rx_tkeep(app_m_axis_direct_rx_tkeep[n*PORTS_PER_IF*AXIS_KEEP_WIDTH +: PORTS_PER_IF*AXIS_KEEP_WIDTH]),
+            .s_axis_app_direct_rx_tvalid(app_m_axis_direct_rx_tvalid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_direct_rx_tready(app_m_axis_direct_rx_tready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_direct_rx_tlast(app_m_axis_direct_rx_tlast[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_app_direct_rx_tuser(app_m_axis_direct_rx_tuser[n*PORTS_PER_IF*AXIS_RX_USER_WIDTH +: PORTS_PER_IF*AXIS_RX_USER_WIDTH]),
+
+            /*
+             * Transmit data output
+             */
+            .tx_clk(if_tx_clk),
+            .tx_rst(if_tx_rst),
+
+            .m_axis_tx_tdata(m_axis_tx_tdata[n*PORTS_PER_IF*AXIS_DATA_WIDTH +: PORTS_PER_IF*AXIS_DATA_WIDTH]),
+            .m_axis_tx_tkeep(m_axis_tx_tkeep[n*PORTS_PER_IF*AXIS_KEEP_WIDTH +: PORTS_PER_IF*AXIS_KEEP_WIDTH]),
+            .m_axis_tx_tvalid(m_axis_tx_tvalid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_tx_tready(m_axis_tx_tready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_tx_tlast(m_axis_tx_tlast[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .m_axis_tx_tuser(m_axis_tx_tuser[n*PORTS_PER_IF*AXIS_TX_USER_WIDTH +: PORTS_PER_IF*AXIS_TX_USER_WIDTH]),
+
+            .s_axis_tx_cpl_ts(s_axis_tx_cpl_ts[n*PORTS_PER_IF*PTP_TS_WIDTH +: PORTS_PER_IF*PTP_TS_WIDTH]),
+            .s_axis_tx_cpl_tag(s_axis_tx_cpl_tag[n*PORTS_PER_IF*TX_TAG_WIDTH +: PORTS_PER_IF*TX_TAG_WIDTH]),
+            .s_axis_tx_cpl_valid(s_axis_tx_cpl_valid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_tx_cpl_ready(s_axis_tx_cpl_ready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+
+            .tx_status(tx_status[n*PORTS_PER_IF +: PORTS_PER_IF]),
 
             /*
              * Receive data input
              */
-            .rx_axis_tdata(if_rx_axis_tdata),
-            .rx_axis_tkeep(if_rx_axis_tkeep),
-            .rx_axis_tvalid(if_rx_axis_tvalid),
-            .rx_axis_tready(if_rx_axis_tready),
-            .rx_axis_tlast(if_rx_axis_tlast),
-            .rx_axis_tid(if_rx_axis_tid),
-            .rx_axis_tdest(if_rx_axis_tdest),
-            .rx_axis_tuser(if_rx_axis_tuser),
+            .rx_clk(if_rx_clk),
+            .rx_rst(if_rx_rst),
+
+            .s_axis_rx_tdata(s_axis_rx_tdata[n*PORTS_PER_IF*AXIS_DATA_WIDTH +: PORTS_PER_IF*AXIS_DATA_WIDTH]),
+            .s_axis_rx_tkeep(s_axis_rx_tkeep[n*PORTS_PER_IF*AXIS_KEEP_WIDTH +: PORTS_PER_IF*AXIS_KEEP_WIDTH]),
+            .s_axis_rx_tvalid(s_axis_rx_tvalid[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_rx_tready(s_axis_rx_tready[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_rx_tlast(s_axis_rx_tlast[n*PORTS_PER_IF +: PORTS_PER_IF]),
+            .s_axis_rx_tuser(s_axis_rx_tuser[n*PORTS_PER_IF*AXIS_RX_USER_WIDTH +: PORTS_PER_IF*AXIS_RX_USER_WIDTH]),
+
+            .rx_status(rx_status[n*PORTS_PER_IF +: PORTS_PER_IF]),
 
             /*
              * PTP clock
              */
-            .ptp_ts_96(ptp_ts_96),
-            .ptp_ts_step(ptp_ts_step),
+            .ptp_ts_96(ptp_sync_ts_96),
+            .ptp_ts_step(ptp_sync_ts_step),
 
             /*
              * MSI interrupts
              */
             .msi_irq(if_msi_irq[n])
         );
-
-        wire [PORTS_PER_IF*PTP_TS_WIDTH-1:0] axis_tx_if_ptp_ts;
-        wire [PORTS_PER_IF*PTP_TAG_WIDTH-1:0] axis_tx_if_ptp_ts_tag;
-        wire [PORTS_PER_IF-1:0] axis_tx_if_ptp_ts_valid;
-        wire [PORTS_PER_IF-1:0] axis_tx_if_ptp_ts_ready;
-
-        if (PTP_TS_ENABLE) begin: ptp
-
-            wire [PTP_TS_WIDTH-1:0] axis_tx_ptp_ts;
-            wire [PTP_TAG_WIDTH-1:0] axis_tx_ptp_ts_tag;
-            wire axis_tx_ptp_ts_valid;
-            wire axis_tx_ptp_ts_ready;
-
-            if (PORTS_PER_IF > 1) begin
-
-                axis_arb_mux #(
-                    .S_COUNT(PORTS_PER_IF),
-                    .DATA_WIDTH(PTP_TS_WIDTH),
-                    .KEEP_ENABLE(0),
-                    .ID_ENABLE(1),
-                    .S_ID_WIDTH(PTP_TAG_WIDTH),
-                    .M_ID_WIDTH(PTP_TAG_WIDTH),
-                    .DEST_ENABLE(0),
-                    .USER_ENABLE(0),
-                    .LAST_ENABLE(0),
-                    .UPDATE_TID(0),
-                    .ARB_TYPE_ROUND_ROBIN(1'b1),
-                    .ARB_LSB_HIGH_PRIORITY(1'b1)
-                )
-                tx_ptp_ts_mux_inst (
-                    .clk(clk),
-                    .rst(rst),
-
-                    // AXI Stream inputs
-                    .s_axis_tdata(axis_tx_if_ptp_ts),
-                    .s_axis_tkeep(0),
-                    .s_axis_tvalid(axis_tx_if_ptp_ts_valid),
-                    .s_axis_tready(axis_tx_if_ptp_ts_ready),
-                    .s_axis_tlast(0),
-                    .s_axis_tid(axis_tx_if_ptp_ts_tag),
-                    .s_axis_tdest(0),
-                    .s_axis_tuser(0),
-
-                    // AXI Stream output
-                    .m_axis_tdata(axis_tx_ptp_ts),
-                    .m_axis_tkeep(),
-                    .m_axis_tvalid(axis_tx_ptp_ts_valid),
-                    .m_axis_tready(axis_tx_ptp_ts_ready),
-                    .m_axis_tlast(),
-                    .m_axis_tid(axis_tx_ptp_ts_tag),
-                    .m_axis_tdest(),
-                    .m_axis_tuser()
-                );
-
-            end else begin
-
-                assign axis_tx_ptp_ts = axis_tx_if_ptp_ts;
-                assign axis_tx_ptp_ts_tag = axis_tx_if_ptp_ts_tag;
-                assign axis_tx_ptp_ts_valid = axis_tx_if_ptp_ts_valid;
-                assign axis_tx_if_ptp_ts_ready = axis_tx_ptp_ts_ready;
-
-            end
-
-            if (APP_ENABLE && APP_AXIS_IF_ENABLE) begin
-
-                assign app_s_axis_if_tx_ptp_ts[n*PTP_TS_WIDTH +: PTP_TS_WIDTH] = axis_tx_ptp_ts;
-                assign app_s_axis_if_tx_ptp_ts_tag[n*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = axis_tx_ptp_ts_tag;
-                assign app_s_axis_if_tx_ptp_ts_valid[n] = axis_tx_ptp_ts_valid;
-                assign axis_tx_ptp_ts_ready = app_s_axis_if_tx_ptp_ts_ready[n];
-
-                assign if_tx_ptp_ts = app_m_axis_if_tx_ptp_ts[n*PTP_TS_WIDTH +: PTP_TS_WIDTH];
-                assign if_tx_ptp_ts_tag = app_m_axis_if_tx_ptp_ts_tag[n*PTP_TAG_WIDTH +: PTP_TAG_WIDTH];
-                assign if_tx_ptp_ts_valid = app_m_axis_if_tx_ptp_ts_valid[n];
-                assign app_m_axis_if_tx_ptp_ts_ready[n] = if_tx_ptp_ts_ready;
-
-            end else begin
-
-                assign app_s_axis_if_tx_ptp_ts[n*PTP_TS_WIDTH +: PTP_TS_WIDTH] = 0;
-                assign app_s_axis_if_tx_ptp_ts_tag[n*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = 0;
-                assign app_s_axis_if_tx_ptp_ts_valid[n] = 0;
-
-                assign app_m_axis_if_tx_ptp_ts_ready[n] = 0;
-
-                assign if_tx_ptp_ts = axis_tx_ptp_ts;
-                assign if_tx_ptp_ts_tag = axis_tx_ptp_ts_tag;
-                assign if_tx_ptp_ts_valid = axis_tx_ptp_ts_valid;
-                assign axis_tx_ptp_ts_ready = if_tx_ptp_ts_ready;
-
-            end
-
-        end else begin
-
-            assign if_tx_ptp_ts = 0;
-            assign if_tx_ptp_ts_tag = 0;
-            assign if_tx_ptp_ts_valid = 0;
-
-            assign app_s_axis_if_tx_ptp_ts[n*PTP_TS_WIDTH +: PTP_TS_WIDTH] = 0;
-            assign app_s_axis_if_tx_ptp_ts_tag[n*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = 0;
-            assign app_s_axis_if_tx_ptp_ts_valid[n] = 0;
-
-            assign app_m_axis_if_tx_ptp_ts_ready[n] = 0;
-
-        end
-
-        // TX FIFO
-
-        wire [AXIS_IF_DATA_WIDTH-1:0] axis_if_tx_tdata;
-        wire [AXIS_IF_KEEP_WIDTH-1:0] axis_if_tx_tkeep;
-        wire axis_if_tx_tvalid;
-        wire axis_if_tx_tready;
-        wire axis_if_tx_tlast;
-        wire [AXIS_IF_TX_ID_WIDTH-1:0] axis_if_tx_tid;
-        wire [AXIS_IF_TX_DEST_WIDTH-1:0] axis_if_tx_tdest;
-        wire [AXIS_IF_TX_USER_WIDTH-1:0] axis_if_tx_tuser;
-
-        wire [PORTS_PER_IF*AXIS_SYNC_DATA_WIDTH-1:0] axis_if_tx_fifo_tdata;
-        wire [PORTS_PER_IF*AXIS_SYNC_KEEP_WIDTH-1:0] axis_if_tx_fifo_tkeep;
-        wire [PORTS_PER_IF-1:0] axis_if_tx_fifo_tvalid;
-        wire [PORTS_PER_IF-1:0] axis_if_tx_fifo_tready;
-        wire [PORTS_PER_IF-1:0] axis_if_tx_fifo_tlast;
-        wire [PORTS_PER_IF*AXIS_TX_ID_WIDTH-1:0] axis_if_tx_fifo_tid;
-        wire [PORTS_PER_IF*AXIS_TX_USER_WIDTH-1:0] axis_if_tx_fifo_tuser;
-
-        if (APP_ENABLE && APP_AXIS_IF_ENABLE) begin
-
-            assign app_s_axis_if_tx_tdata[n*AXIS_IF_DATA_WIDTH +: AXIS_IF_DATA_WIDTH] = if_tx_axis_tdata;
-            assign app_s_axis_if_tx_tkeep[n*AXIS_IF_KEEP_WIDTH +: AXIS_IF_KEEP_WIDTH] = if_tx_axis_tkeep;
-            assign app_s_axis_if_tx_tvalid[n +: 1] = if_tx_axis_tvalid;
-            assign if_tx_axis_tready = app_s_axis_if_tx_tready[n +: 1];
-            assign app_s_axis_if_tx_tlast[n +: 1] = if_tx_axis_tlast;
-            assign app_s_axis_if_tx_tid[n*AXIS_IF_TX_ID_WIDTH +: AXIS_IF_TX_ID_WIDTH] = if_tx_axis_tid;
-            assign app_s_axis_if_tx_tdest[n*AXIS_IF_TX_DEST_WIDTH +: AXIS_IF_TX_DEST_WIDTH] = if_tx_axis_tdest;
-            assign app_s_axis_if_tx_tuser[n*AXIS_IF_TX_USER_WIDTH +: AXIS_IF_TX_USER_WIDTH] = if_tx_axis_tuser;
-
-            assign axis_if_tx_tdata = app_m_axis_if_tx_tdata[n*AXIS_IF_DATA_WIDTH +: AXIS_IF_DATA_WIDTH];
-            assign axis_if_tx_tkeep = app_m_axis_if_tx_tkeep[n*AXIS_IF_KEEP_WIDTH +: AXIS_IF_KEEP_WIDTH];
-            assign axis_if_tx_tvalid = app_m_axis_if_tx_tvalid[n];
-            assign app_m_axis_if_tx_tready[n +: 1] = axis_if_tx_tready;
-            assign axis_if_tx_tlast = app_m_axis_if_tx_tlast[n];
-            assign axis_if_tx_tid = app_m_axis_if_tx_tid[n*AXIS_IF_TX_ID_WIDTH +: AXIS_IF_TX_ID_WIDTH];
-            assign axis_if_tx_tdest = app_m_axis_if_tx_tdest[n*AXIS_IF_TX_DEST_WIDTH +: AXIS_IF_TX_DEST_WIDTH];
-            assign axis_if_tx_tuser = app_m_axis_if_tx_tuser[n*AXIS_IF_TX_USER_WIDTH +: AXIS_IF_TX_USER_WIDTH];
-
-        end else begin
-
-            assign app_s_axis_if_tx_tdata[n*AXIS_IF_DATA_WIDTH +: AXIS_IF_DATA_WIDTH] = 0;
-            assign app_s_axis_if_tx_tkeep[n*AXIS_IF_KEEP_WIDTH +: AXIS_IF_KEEP_WIDTH] = 0;
-            assign app_s_axis_if_tx_tvalid[n +: 1] = 0;
-            assign app_s_axis_if_tx_tlast[n +: 1] = 0;
-            assign app_s_axis_if_tx_tid[n*AXIS_IF_TX_ID_WIDTH +: AXIS_IF_TX_ID_WIDTH] = 0;
-            assign app_s_axis_if_tx_tdest[n*AXIS_IF_TX_DEST_WIDTH +: AXIS_IF_TX_DEST_WIDTH] = 0;
-            assign app_s_axis_if_tx_tuser[n*AXIS_IF_TX_USER_WIDTH +: AXIS_IF_TX_USER_WIDTH] = 0;
-
-            assign app_m_axis_if_tx_tready[n +: 1] = 0;
-
-            assign axis_if_tx_tdata = if_tx_axis_tdata;
-            assign axis_if_tx_tkeep = if_tx_axis_tkeep;
-            assign axis_if_tx_tvalid = if_tx_axis_tvalid;
-            assign if_tx_axis_tready = axis_if_tx_tready;
-            assign axis_if_tx_tlast = if_tx_axis_tlast;
-            assign axis_if_tx_tid = if_tx_axis_tid;
-            assign axis_if_tx_tdest = if_tx_axis_tdest;
-            assign axis_if_tx_tuser = if_tx_axis_tuser;
-
-        end
-
-        tx_fifo #(
-            .FIFO_DEPTH(TX_FIFO_DEPTH),
-            .PORTS(PORTS_PER_IF),
-            .S_DATA_WIDTH(AXIS_IF_DATA_WIDTH),
-            .S_KEEP_ENABLE(AXIS_IF_KEEP_WIDTH > 1),
-            .S_KEEP_WIDTH(AXIS_IF_KEEP_WIDTH),
-            .M_DATA_WIDTH(AXIS_SYNC_DATA_WIDTH),
-            .M_KEEP_ENABLE(AXIS_SYNC_KEEP_WIDTH > 1),
-            .M_KEEP_WIDTH(AXIS_SYNC_KEEP_WIDTH),
-            .ID_ENABLE(1),
-            .ID_WIDTH(AXIS_IF_TX_ID_WIDTH),
-            .S_DEST_WIDTH(AXIS_IF_TX_DEST_WIDTH),
-            .M_DEST_WIDTH(AXIS_TX_DEST_WIDTH),
-            .USER_ENABLE(1),
-            .USER_WIDTH(AXIS_IF_TX_USER_WIDTH),
-            .PIPELINE_OUTPUT(AXIS_TX_FIFO_PIPELINE)
-        )
-        tx_fifo_inst (
-            .clk(clk),
-            .rst(rst),
-
-            /*
-             * AXI Stream input
-             */
-            .s_axis_tdata(axis_if_tx_tdata),
-            .s_axis_tkeep(axis_if_tx_tkeep),
-            .s_axis_tvalid(axis_if_tx_tvalid),
-            .s_axis_tready(axis_if_tx_tready),
-            .s_axis_tlast(axis_if_tx_tlast),
-            .s_axis_tid(axis_if_tx_tid),
-            .s_axis_tdest(axis_if_tx_tdest),
-            .s_axis_tuser(axis_if_tx_tuser),
-
-            /*
-             * AXI Stream outputs
-             */
-            .m_axis_tdata(axis_if_tx_fifo_tdata),
-            .m_axis_tkeep(axis_if_tx_fifo_tkeep),
-            .m_axis_tvalid(axis_if_tx_fifo_tvalid),
-            .m_axis_tready(axis_if_tx_fifo_tready),
-            .m_axis_tlast(axis_if_tx_fifo_tlast),
-            .m_axis_tid(axis_if_tx_fifo_tid),
-            .m_axis_tdest(),
-            .m_axis_tuser(axis_if_tx_fifo_tuser),
-
-            /*
-             * Status
-             */
-            .status_overflow(),
-            .status_bad_frame(),
-            .status_good_frame()
-        );
-
-        // RX FIFO
-
-        wire [PORTS_PER_IF*AXIS_SYNC_DATA_WIDTH-1:0] axis_if_rx_fifo_tdata;
-        wire [PORTS_PER_IF*AXIS_SYNC_KEEP_WIDTH-1:0] axis_if_rx_fifo_tkeep;
-        wire [PORTS_PER_IF-1:0] axis_if_rx_fifo_tvalid;
-        wire [PORTS_PER_IF-1:0] axis_if_rx_fifo_tready;
-        wire [PORTS_PER_IF-1:0] axis_if_rx_fifo_tlast;
-        wire [PORTS_PER_IF*AXIS_RX_DEST_WIDTH-1:0] axis_if_rx_fifo_tdest = 0;
-        wire [PORTS_PER_IF*AXIS_IF_RX_USER_WIDTH-1:0] axis_if_rx_fifo_tuser;
-
-        wire [AXIS_IF_DATA_WIDTH-1:0] axis_if_rx_tdata;
-        wire [AXIS_IF_KEEP_WIDTH-1:0] axis_if_rx_tkeep;
-        wire axis_if_rx_tvalid;
-        wire axis_if_rx_tready;
-        wire axis_if_rx_tlast;
-        wire [AXIS_IF_RX_ID_WIDTH-1:0] axis_if_rx_tid;
-        wire [AXIS_IF_RX_DEST_WIDTH-1:0] axis_if_rx_tdest;
-        wire [AXIS_IF_RX_USER_WIDTH-1:0] axis_if_rx_tuser;
-
-        rx_fifo #(
-            .FIFO_DEPTH(RX_FIFO_DEPTH),
-            .PORTS(PORTS_PER_IF),
-            .S_DATA_WIDTH(AXIS_SYNC_DATA_WIDTH),
-            .S_KEEP_ENABLE(AXIS_SYNC_KEEP_WIDTH > 1),
-            .S_KEEP_WIDTH(AXIS_SYNC_KEEP_WIDTH),
-            .M_DATA_WIDTH(AXIS_IF_DATA_WIDTH),
-            .M_KEEP_ENABLE(AXIS_IF_KEEP_WIDTH > 1),
-            .M_KEEP_WIDTH(AXIS_IF_KEEP_WIDTH),
-            .ID_ENABLE(1),
-            .M_ID_WIDTH(AXIS_IF_RX_ID_WIDTH),
-            .DEST_WIDTH(AXIS_IF_RX_DEST_WIDTH),
-            .USER_ENABLE(1),
-            .USER_WIDTH(AXIS_IF_RX_USER_WIDTH),
-            .PIPELINE_OUTPUT(AXIS_RX_FIFO_PIPELINE)
-        )
-        rx_fifo_inst (
-            .clk(clk),
-            .rst(rst),
-
-            /*
-             * AXI Stream input
-             */
-            .s_axis_tdata(axis_if_rx_fifo_tdata),
-            .s_axis_tkeep(axis_if_rx_fifo_tkeep),
-            .s_axis_tvalid(axis_if_rx_fifo_tvalid),
-            .s_axis_tready(axis_if_rx_fifo_tready),
-            .s_axis_tlast(axis_if_rx_fifo_tlast),
-            .s_axis_tid(0),
-            .s_axis_tdest(axis_if_rx_fifo_tdest),
-            .s_axis_tuser(axis_if_rx_fifo_tuser),
-
-            /*
-             * AXI Stream outputs
-             */
-            .m_axis_tdata(axis_if_rx_tdata),
-            .m_axis_tkeep(axis_if_rx_tkeep),
-            .m_axis_tvalid(axis_if_rx_tvalid),
-            .m_axis_tready(axis_if_rx_tready),
-            .m_axis_tlast(axis_if_rx_tlast),
-            .m_axis_tid(axis_if_rx_tid),
-            .m_axis_tdest(axis_if_rx_tdest),
-            .m_axis_tuser(axis_if_rx_tuser),
-
-            /*
-             * Status
-             */
-            .status_overflow(),
-            .status_bad_frame(),
-            .status_good_frame()
-        );
-
-        if (APP_ENABLE && APP_AXIS_IF_ENABLE) begin
-
-            assign app_s_axis_if_rx_tdata[n*AXIS_IF_DATA_WIDTH +: AXIS_IF_DATA_WIDTH] = axis_if_rx_tdata;
-            assign app_s_axis_if_rx_tkeep[n*AXIS_IF_KEEP_WIDTH +: AXIS_IF_KEEP_WIDTH] = axis_if_rx_tkeep;
-            assign app_s_axis_if_rx_tvalid[n +: 1] = axis_if_rx_tvalid;
-            assign axis_if_rx_tready = app_s_axis_if_rx_tready[n +: 1];
-            assign app_s_axis_if_rx_tlast[n +: 1] = axis_if_rx_tlast;
-            assign app_s_axis_if_rx_tid[n*AXIS_IF_RX_ID_WIDTH +: AXIS_IF_RX_ID_WIDTH] = axis_if_rx_tid;
-            assign app_s_axis_if_rx_tdest[n*AXIS_IF_RX_DEST_WIDTH +: AXIS_IF_RX_DEST_WIDTH] = axis_if_rx_tdest;
-            assign app_s_axis_if_rx_tuser[n*AXIS_IF_RX_USER_WIDTH +: AXIS_IF_RX_USER_WIDTH] = axis_if_rx_tuser;
-
-            assign if_rx_axis_tdata = app_m_axis_if_rx_tdata[n*AXIS_IF_DATA_WIDTH +: AXIS_IF_DATA_WIDTH];
-            assign if_rx_axis_tkeep = app_m_axis_if_rx_tkeep[n*AXIS_IF_KEEP_WIDTH +: AXIS_IF_KEEP_WIDTH];
-            assign if_rx_axis_tvalid = app_m_axis_if_rx_tvalid[n +: 1];
-            assign app_m_axis_if_rx_tready[n +: 1] = if_rx_axis_tready;
-            assign if_rx_axis_tlast = app_m_axis_if_rx_tlast[n +: 1];
-            assign if_rx_axis_tid = app_m_axis_if_rx_tid[n*AXIS_IF_RX_ID_WIDTH +: AXIS_IF_RX_ID_WIDTH];
-            assign if_rx_axis_tdest = app_m_axis_if_rx_tdest[n*AXIS_IF_RX_DEST_WIDTH +: AXIS_IF_RX_DEST_WIDTH];
-            assign if_rx_axis_tuser = app_m_axis_if_rx_tuser[n*AXIS_IF_RX_USER_WIDTH +: AXIS_IF_RX_USER_WIDTH];
-
-        end else begin
-
-            assign app_s_axis_if_rx_tdata[n*AXIS_IF_DATA_WIDTH +: AXIS_IF_DATA_WIDTH] = 0;
-            assign app_s_axis_if_rx_tkeep[n*AXIS_IF_KEEP_WIDTH +: AXIS_IF_KEEP_WIDTH] = 0;
-            assign app_s_axis_if_rx_tvalid[n +: 1] = 0;
-            assign app_s_axis_if_rx_tlast[n +: 1] = 0;
-            assign app_s_axis_if_rx_tid[n*AXIS_IF_RX_ID_WIDTH +: AXIS_IF_RX_ID_WIDTH] = 0;
-            assign app_s_axis_if_rx_tdest[n*AXIS_IF_RX_DEST_WIDTH +: AXIS_IF_RX_DEST_WIDTH] = 0;
-            assign app_s_axis_if_rx_tuser[n*AXIS_IF_RX_USER_WIDTH +: AXIS_IF_RX_USER_WIDTH] = 0;
-
-            assign app_m_axis_if_rx_tready[n +: 1] = 0;
-
-            assign if_rx_axis_tdata = axis_if_rx_tdata;
-            assign if_rx_axis_tkeep = axis_if_rx_tkeep;
-            assign if_rx_axis_tvalid = axis_if_rx_tvalid;
-            assign axis_if_rx_tready = if_rx_axis_tready;
-            assign if_rx_axis_tlast = axis_if_rx_tlast;
-            assign if_rx_axis_tid = axis_if_rx_tid;
-            assign if_rx_axis_tdest = axis_if_rx_tdest;
-            assign if_rx_axis_tuser = axis_if_rx_tuser;
-
-        end
 
         for (m = 0; m < PORTS_PER_IF; m = m + 1) begin : port
 
@@ -2769,743 +2666,84 @@ generate
             wire port_rx_ptp_clk = rx_ptp_clk[n*PORTS_PER_IF+m];
             wire port_rx_ptp_rst = rx_ptp_rst[n*PORTS_PER_IF+m];
 
+            assign if_tx_clk[m] = port_tx_clk;
+            assign if_tx_rst[m] = port_tx_rst;
+
+            assign if_rx_clk[m] = port_rx_clk;
+            assign if_rx_rst[m] = port_rx_rst;
+
             assign app_direct_tx_clk[n*PORTS_PER_IF+m] = port_tx_clk;
             assign app_direct_tx_rst[n*PORTS_PER_IF+m] = port_tx_rst;
 
             assign app_direct_rx_clk[n*PORTS_PER_IF+m] = port_rx_clk;
             assign app_direct_rx_rst[n*PORTS_PER_IF+m] = port_rx_rst;
 
+            wire [PTP_TS_WIDTH-1:0] port_rx_ptp_ts_96;
+            wire port_rx_ptp_ts_step;
+
+            wire [PTP_TS_WIDTH-1:0] port_tx_ptp_ts_96;
+            wire port_tx_ptp_ts_step;
+
             if (PTP_TS_ENABLE) begin: ptp
 
                 // PTP CDC logic
                 ptp_clock_cdc #(
                     .TS_WIDTH(PTP_TS_WIDTH),
-                    .NS_WIDTH(PTP_PERIOD_NS_WIDTH),
+                    .NS_WIDTH(6),
                     .FNS_WIDTH(16),
                     .USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK),
                     .PIPELINE_OUTPUT(PTP_PORT_CDC_PIPELINE)
                 )
                 tx_ptp_cdc_inst (
-                    .input_clk(clk),
-                    .input_rst(rst),
+                    .input_clk(ptp_clk),
+                    .input_rst(ptp_rst),
                     .output_clk(port_tx_clk),
                     .output_rst(port_tx_rst),
                     .sample_clk(ptp_sample_clk),
                     .input_ts(ptp_ts_96),
                     .input_ts_step(ptp_ts_step),
-                    .output_ts(tx_ptp_ts_96[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH]),
-                    .output_ts_step(tx_ptp_ts_step[n*PORTS_PER_IF+m]),
+                    .output_ts(port_tx_ptp_ts_96),
+                    .output_ts_step(port_tx_ptp_ts_step),
                     .output_pps(),
                     .locked()
                 );
 
                 ptp_clock_cdc #(
                     .TS_WIDTH(PTP_TS_WIDTH),
-                    .NS_WIDTH(PTP_PERIOD_NS_WIDTH),
+                    .NS_WIDTH(6),
                     .FNS_WIDTH(16),
                     .USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK),
                     .PIPELINE_OUTPUT(PTP_PORT_CDC_PIPELINE)
                 )
                 rx_ptp_cdc_inst (
-                    .input_clk(clk),
-                    .input_rst(rst),
+                    .input_clk(ptp_clk),
+                    .input_rst(ptp_rst),
                     .output_clk(PTP_SEPARATE_RX_CLOCK ? port_rx_ptp_clk : port_rx_clk),
                     .output_rst(PTP_SEPARATE_RX_CLOCK ? port_rx_ptp_rst : port_rx_rst),
                     .sample_clk(ptp_sample_clk),
                     .input_ts(ptp_ts_96),
                     .input_ts_step(ptp_ts_step),
-                    .output_ts(rx_ptp_ts_96[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH]),
-                    .output_ts_step(rx_ptp_ts_step[n*PORTS_PER_IF+m]),
+                    .output_ts(port_rx_ptp_ts_96),
+                    .output_ts_step(port_rx_ptp_ts_step),
                     .output_pps(),
                     .locked()
                 );
 
-                // PTP TS FIFO (TX)
-                wire [PTP_TS_WIDTH-1:0] axis_tx_ptp_ts;
-                wire [PTP_TAG_WIDTH-1:0] axis_tx_ptp_ts_tag;
-                wire axis_tx_ptp_ts_valid;
-                wire axis_tx_ptp_ts_ready;
-
-                wire [PTP_TS_WIDTH-1:0] axis_tx_in_ptp_ts;
-                wire [PTP_TAG_WIDTH-1:0] axis_tx_in_ptp_ts_tag;
-                wire axis_tx_in_ptp_ts_valid;
-                wire axis_tx_in_ptp_ts_ready;
-
-                wire [PTP_TS_WIDTH-1:0] axis_tx_fifo_ptp_ts;
-                wire [PTP_TAG_WIDTH-1:0] axis_tx_fifo_ptp_ts_tag;
-                wire axis_tx_fifo_ptp_ts_valid;
-                wire axis_tx_fifo_ptp_ts_ready;
-
-                wire [PTP_TS_WIDTH-1:0] axis_tx_pipe_ptp_ts;
-                wire [PTP_TAG_WIDTH-1:0] axis_tx_pipe_ptp_ts_tag;
-                wire axis_tx_pipe_ptp_ts_valid;
-                wire axis_tx_pipe_ptp_ts_ready;
-
-                wire [PTP_TS_WIDTH-1:0] axis_tx_pipe_2_ptp_ts;
-                wire [PTP_TAG_WIDTH-1:0] axis_tx_pipe_2_ptp_ts_tag;
-                wire axis_tx_pipe_2_ptp_ts_valid;
-                wire axis_tx_pipe_2_ptp_ts_ready;
-
-                assign axis_tx_ptp_ts = s_axis_tx_ptp_ts[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH];
-                assign axis_tx_ptp_ts_tag = s_axis_tx_ptp_ts_tag[(n*PORTS_PER_IF+m)*PTP_TAG_WIDTH +: PTP_TAG_WIDTH];
-                assign axis_tx_ptp_ts_valid = s_axis_tx_ptp_ts_valid[n*PORTS_PER_IF+m +: 1];
-                assign s_axis_tx_ptp_ts_ready[n*PORTS_PER_IF+m +: 1] = axis_tx_ptp_ts_ready;
-
-                if (APP_ENABLE && APP_AXIS_DIRECT_ENABLE) begin
-
-                    assign app_s_axis_direct_tx_ptp_ts[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH] = axis_tx_ptp_ts;
-                    assign app_s_axis_direct_tx_ptp_ts_tag[(n*PORTS_PER_IF+m)*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = axis_tx_ptp_ts_tag;
-                    assign app_s_axis_direct_tx_ptp_ts_valid[n*PORTS_PER_IF+m] = axis_tx_ptp_ts_valid;
-                    assign axis_tx_ptp_ts_ready = app_s_axis_direct_tx_ptp_ts_ready[n*PORTS_PER_IF+m];
-
-                    assign axis_tx_in_ptp_ts = app_m_axis_direct_tx_ptp_ts[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH];
-                    assign axis_tx_in_ptp_ts_tag = app_m_axis_direct_tx_ptp_ts_tag[(n*PORTS_PER_IF+m)*PTP_TAG_WIDTH +: PTP_TAG_WIDTH];
-                    assign axis_tx_in_ptp_ts_valid = app_m_axis_direct_tx_ptp_ts_valid[n*PORTS_PER_IF+m];
-                    assign app_m_axis_direct_tx_ptp_ts_ready[n*PORTS_PER_IF+m] = axis_tx_in_ptp_ts_ready;
-
-                end else begin
-
-                    assign app_s_axis_direct_tx_ptp_ts[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH] = 0;
-                    assign app_s_axis_direct_tx_ptp_ts_tag[(n*PORTS_PER_IF+m)*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = 0;
-                    assign app_s_axis_direct_tx_ptp_ts_valid[n*PORTS_PER_IF+m] = 0;
-
-                    assign app_m_axis_direct_tx_ptp_ts_ready[n*PORTS_PER_IF+m] = 0;
-
-                    assign axis_tx_in_ptp_ts = axis_tx_ptp_ts;
-                    assign axis_tx_in_ptp_ts_tag = axis_tx_ptp_ts_tag;
-                    assign axis_tx_in_ptp_ts_valid = axis_tx_ptp_ts_valid;
-                    assign axis_tx_ptp_ts_ready = axis_tx_in_ptp_ts_ready;
-
-                end
-
-                axis_async_fifo #(
-                    .DEPTH(TX_PTP_TS_FIFO_DEPTH),
-                    .DATA_WIDTH(PTP_TS_WIDTH),
-                    .KEEP_ENABLE(0),
-                    .LAST_ENABLE(0),
-                    .ID_ENABLE(1),
-                    .ID_WIDTH(PTP_TAG_WIDTH),
-                    .DEST_ENABLE(0),
-                    .USER_ENABLE(0),
-                    .FRAME_FIFO(0)
-                )
-                tx_ptp_ts_fifo_inst (
-                    // AXI input
-                    .s_clk(port_tx_clk),
-                    .s_rst(port_tx_rst),
-                    .s_axis_tdata(axis_tx_in_ptp_ts),
-                    .s_axis_tkeep(0),
-                    .s_axis_tvalid(axis_tx_in_ptp_ts_valid),
-                    .s_axis_tready(axis_tx_in_ptp_ts_ready),
-                    .s_axis_tlast(0),
-                    .s_axis_tid(axis_tx_in_ptp_ts_tag),
-                    .s_axis_tdest(0),
-                    .s_axis_tuser(0),
-
-                    // AXI output
-                    .m_clk(clk),
-                    .m_rst(rst),
-                    .m_axis_tdata(axis_tx_fifo_ptp_ts),
-                    .m_axis_tkeep(),
-                    .m_axis_tvalid(axis_tx_fifo_ptp_ts_valid),
-                    .m_axis_tready(axis_tx_fifo_ptp_ts_ready),
-                    .m_axis_tlast(),
-                    .m_axis_tid(axis_tx_fifo_ptp_ts_tag),
-                    .m_axis_tdest(),
-                    .m_axis_tuser(),
-
-                    // Status
-                    .s_status_overflow(),
-                    .s_status_bad_frame(),
-                    .s_status_good_frame(),
-                    .m_status_overflow(),
-                    .m_status_bad_frame(),
-                    .m_status_good_frame()
-                );
-
-                axis_pipeline_fifo #(
-                    .DATA_WIDTH(PTP_TS_WIDTH),
-                    .KEEP_ENABLE(0),
-                    .LAST_ENABLE(0),
-                    .ID_ENABLE(1),
-                    .ID_WIDTH(PTP_TAG_WIDTH),
-                    .DEST_ENABLE(0),
-                    .USER_ENABLE(0),
-                    .LENGTH(AXIS_TX_TS_PIPELINE)
-                )
-                tx_ptp_ts_pipeline_fifo_inst (
-                    .clk(clk),
-                    .rst(rst),
-
-                    // AXI input
-                    .s_axis_tdata(axis_tx_fifo_ptp_ts),
-                    .s_axis_tkeep(0),
-                    .s_axis_tvalid(axis_tx_fifo_ptp_ts_valid),
-                    .s_axis_tready(axis_tx_fifo_ptp_ts_ready),
-                    .s_axis_tlast(0),
-                    .s_axis_tid(axis_tx_fifo_ptp_ts_tag),
-                    .s_axis_tdest(0),
-                    .s_axis_tuser(0),
-
-                    // AXI output
-                    .m_axis_tdata(axis_tx_pipe_ptp_ts),
-                    .m_axis_tkeep(),
-                    .m_axis_tvalid(axis_tx_pipe_ptp_ts_valid),
-                    .m_axis_tready(axis_tx_pipe_ptp_ts_ready),
-                    .m_axis_tlast(),
-                    .m_axis_tid(axis_tx_pipe_ptp_ts_tag),
-                    .m_axis_tdest(),
-                    .m_axis_tuser()
-                );
-
-                if (APP_ENABLE && APP_AXIS_SYNC_ENABLE) begin
-
-                    assign app_s_axis_sync_tx_ptp_ts[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH] = axis_tx_pipe_ptp_ts;
-                    assign app_s_axis_sync_tx_ptp_ts_tag[(n*PORTS_PER_IF+m)*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = axis_tx_pipe_ptp_ts_tag;
-                    assign app_s_axis_sync_tx_ptp_ts_valid[n*PORTS_PER_IF+m] = axis_tx_pipe_ptp_ts_valid;
-                    assign axis_tx_pipe_ptp_ts_ready = app_s_axis_sync_tx_ptp_ts_ready[n*PORTS_PER_IF+m];
-
-                    assign axis_tx_pipe_2_ptp_ts = app_m_axis_sync_tx_ptp_ts[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH];
-                    assign axis_tx_pipe_2_ptp_ts_tag = app_m_axis_sync_tx_ptp_ts_tag[(n*PORTS_PER_IF+m)*PTP_TAG_WIDTH +: PTP_TAG_WIDTH];
-                    assign axis_tx_pipe_2_ptp_ts_valid = app_m_axis_sync_tx_ptp_ts_valid[n*PORTS_PER_IF+m];
-                    assign app_m_axis_sync_tx_ptp_ts_ready[n*PORTS_PER_IF+m] = axis_tx_pipe_2_ptp_ts_ready;
-
-                end else begin
-
-                    assign app_s_axis_sync_tx_ptp_ts[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH] = 0;
-                    assign app_s_axis_sync_tx_ptp_ts_tag[(n*PORTS_PER_IF+m)*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = 0;
-                    assign app_s_axis_sync_tx_ptp_ts_valid[n*PORTS_PER_IF+m] = 0;
-
-                    assign app_m_axis_sync_tx_ptp_ts_ready[n*PORTS_PER_IF+m] = 0;
-
-                    assign axis_tx_pipe_2_ptp_ts = axis_tx_pipe_ptp_ts;
-                    assign axis_tx_pipe_2_ptp_ts_tag = axis_tx_pipe_ptp_ts_tag;
-                    assign axis_tx_pipe_2_ptp_ts_valid = axis_tx_pipe_ptp_ts_valid;
-                    assign axis_tx_pipe_ptp_ts_ready = axis_tx_pipe_2_ptp_ts_ready;
-
-                end
-
-                assign axis_tx_if_ptp_ts[m*PTP_TS_WIDTH +: PTP_TS_WIDTH] = axis_tx_pipe_2_ptp_ts;
-                assign axis_tx_if_ptp_ts_tag[m*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = axis_tx_pipe_2_ptp_ts_tag;
-                assign axis_tx_if_ptp_ts_valid[m] = axis_tx_pipe_2_ptp_ts_valid;
-                assign axis_tx_pipe_2_ptp_ts_ready = axis_tx_if_ptp_ts_ready[m];
-
             end else begin
 
-                assign tx_ptp_ts_96[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH] = {PTP_TS_WIDTH{1'b0}};
-                assign tx_ptp_ts_step[n*PORTS_PER_IF+m] = 1'b0;
+                assign port_tx_ptp_ts_96 = 0;
+                assign port_tx_ptp_ts_step = 1'b0;
 
-                assign rx_ptp_ts_96[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH] = {PTP_TS_WIDTH{1'b0}};
-                assign rx_ptp_ts_step[n*PORTS_PER_IF+m] = 1'b0;
-
-                assign app_s_axis_direct_tx_ptp_ts[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH] = 0;
-                assign app_s_axis_direct_tx_ptp_ts_tag[(n*PORTS_PER_IF+m)*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = 0;
-                assign app_s_axis_direct_tx_ptp_ts_valid[n*PORTS_PER_IF+m] = 0;
-
-                assign app_m_axis_direct_tx_ptp_ts_ready[n*PORTS_PER_IF+m] = 0;
-
-                assign app_s_axis_sync_tx_ptp_ts[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH] = 0;
-                assign app_s_axis_sync_tx_ptp_ts_tag[(n*PORTS_PER_IF+m)*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = 0;
-                assign app_s_axis_sync_tx_ptp_ts_valid[n*PORTS_PER_IF+m] = 0;
-
-                assign app_m_axis_sync_tx_ptp_ts_ready[n*PORTS_PER_IF+m] = 0;
-
-                assign axis_tx_if_ptp_ts[m*PTP_TS_WIDTH +: PTP_TS_WIDTH] = 0;
-                assign axis_tx_if_ptp_ts_tag[m*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = 0;
-                assign axis_tx_if_ptp_ts_valid[m] = 0;
+                assign port_rx_ptp_ts_96 = 0;
+                assign port_rx_ptp_ts_step = 1'b0;
 
             end
 
-            // TX FIFOs
-            wire [AXIS_SYNC_DATA_WIDTH-1:0] axis_tx_if_tdata;
-            wire [AXIS_SYNC_KEEP_WIDTH-1:0] axis_tx_if_tkeep;
-            wire axis_tx_if_tvalid;
-            wire axis_tx_if_tready;
-            wire axis_tx_if_tlast;
-            wire [AXIS_TX_USER_WIDTH-1:0] axis_tx_if_tuser;
-
-            wire [AXIS_SYNC_DATA_WIDTH-1:0] axis_tx_pipe_tdata;
-            wire [AXIS_SYNC_KEEP_WIDTH-1:0] axis_tx_pipe_tkeep;
-            wire axis_tx_pipe_tvalid;
-            wire axis_tx_pipe_tready;
-            wire axis_tx_pipe_tlast;
-            wire [AXIS_TX_USER_WIDTH-1:0] axis_tx_pipe_tuser;
-
-            wire [AXIS_SYNC_DATA_WIDTH-1:0] axis_tx_async_fifo_tdata;
-            wire [AXIS_SYNC_KEEP_WIDTH-1:0] axis_tx_async_fifo_tkeep;
-            wire axis_tx_async_fifo_tvalid;
-            wire axis_tx_async_fifo_tready;
-            wire axis_tx_async_fifo_tlast;
-            wire [AXIS_TX_USER_WIDTH-1:0] axis_tx_async_fifo_tuser;
-
-            wire [AXIS_DATA_WIDTH-1:0] axis_tx_out_tdata;
-            wire [AXIS_KEEP_WIDTH-1:0] axis_tx_out_tkeep;
-            wire axis_tx_out_tvalid;
-            wire axis_tx_out_tready;
-            wire axis_tx_out_tlast;
-            wire [AXIS_TX_USER_WIDTH-1:0] axis_tx_out_tuser;
-
-            wire [AXIS_DATA_WIDTH-1:0] axis_tx_l2_tdata;
-            wire [AXIS_KEEP_WIDTH-1:0] axis_tx_l2_tkeep;
-            wire axis_tx_l2_tvalid;
-            wire axis_tx_l2_tready;
-            wire axis_tx_l2_tlast;
-            wire [AXIS_TX_USER_WIDTH-1:0] axis_tx_l2_tuser;
-
-            wire [AXIS_DATA_WIDTH-1:0] axis_tx_tdata;
-            wire [AXIS_KEEP_WIDTH-1:0] axis_tx_tkeep;
-            wire axis_tx_tvalid;
-            wire axis_tx_tready;
-            wire axis_tx_tlast;
-            wire [AXIS_TX_USER_WIDTH-1:0] axis_tx_tuser;
-
-            assign axis_tx_if_tdata = axis_if_tx_fifo_tdata[m*AXIS_SYNC_DATA_WIDTH +: AXIS_SYNC_DATA_WIDTH];
-            assign axis_tx_if_tkeep = axis_if_tx_fifo_tkeep[m*AXIS_SYNC_KEEP_WIDTH +: AXIS_SYNC_KEEP_WIDTH];
-            assign axis_tx_if_tvalid = axis_if_tx_fifo_tvalid[m +: 1];
-            assign axis_if_tx_fifo_tready[m +: 1] = axis_tx_if_tready;
-            assign axis_tx_if_tlast = axis_if_tx_fifo_tlast[m +: 1];
-            assign axis_tx_if_tuser = axis_if_tx_fifo_tuser[m*AXIS_TX_USER_WIDTH +: AXIS_TX_USER_WIDTH];
-
-            if (APP_ENABLE && APP_AXIS_SYNC_ENABLE) begin
-
-                assign app_s_axis_sync_tx_tdata[(n*PORTS_PER_IF+m)*AXIS_SYNC_DATA_WIDTH +: AXIS_SYNC_DATA_WIDTH] = axis_tx_if_tdata;
-                assign app_s_axis_sync_tx_tkeep[(n*PORTS_PER_IF+m)*AXIS_SYNC_KEEP_WIDTH +: AXIS_SYNC_KEEP_WIDTH] = axis_tx_if_tkeep;
-                assign app_s_axis_sync_tx_tvalid[n*PORTS_PER_IF+m] = axis_tx_if_tvalid;
-                assign axis_tx_if_tready = app_s_axis_sync_tx_tready[n*PORTS_PER_IF+m +: 1];
-                assign app_s_axis_sync_tx_tlast[n*PORTS_PER_IF+m] = axis_tx_if_tlast;
-                assign app_s_axis_sync_tx_tuser[(n*PORTS_PER_IF+m)*AXIS_TX_USER_WIDTH +: AXIS_TX_USER_WIDTH] = axis_tx_if_tuser;
-
-                assign axis_tx_pipe_tdata = app_m_axis_sync_tx_tdata[(n*PORTS_PER_IF+m)*AXIS_SYNC_DATA_WIDTH +: AXIS_SYNC_DATA_WIDTH];
-                assign axis_tx_pipe_tkeep = app_m_axis_sync_tx_tkeep[(n*PORTS_PER_IF+m)*AXIS_SYNC_KEEP_WIDTH +: AXIS_SYNC_KEEP_WIDTH];
-                assign axis_tx_pipe_tvalid = app_m_axis_sync_tx_tvalid[n*PORTS_PER_IF+m +: 1];
-                assign app_m_axis_sync_tx_tready[n*PORTS_PER_IF+m +: 1] = axis_tx_pipe_tready;
-                assign axis_tx_pipe_tlast = app_m_axis_sync_tx_tlast[n*PORTS_PER_IF+m +: 1];
-                assign axis_tx_pipe_tuser = app_m_axis_sync_tx_tuser[(n*PORTS_PER_IF+m)*AXIS_TX_USER_WIDTH +: AXIS_TX_USER_WIDTH];
-
-            end else begin
-
-                assign app_s_axis_sync_tx_tdata[(n*PORTS_PER_IF+m)*AXIS_SYNC_DATA_WIDTH +: AXIS_SYNC_DATA_WIDTH] = 0;
-                assign app_s_axis_sync_tx_tkeep[(n*PORTS_PER_IF+m)*AXIS_SYNC_KEEP_WIDTH +: AXIS_SYNC_KEEP_WIDTH] = 0;
-                assign app_s_axis_sync_tx_tvalid[n*PORTS_PER_IF+m +: 1] = 0;
-                assign app_s_axis_sync_tx_tlast[n*PORTS_PER_IF+m +: 1] = 0;
-                assign app_s_axis_sync_tx_tuser[(n*PORTS_PER_IF+m)*AXIS_TX_USER_WIDTH +: AXIS_TX_USER_WIDTH] = 0;
-
-                assign app_m_axis_sync_tx_tready[n*PORTS_PER_IF+m +: 1] = 0;
-
-                assign axis_tx_pipe_tdata = axis_tx_if_tdata;
-                assign axis_tx_pipe_tkeep = axis_tx_if_tkeep;
-                assign axis_tx_pipe_tvalid = axis_tx_if_tvalid;
-                assign axis_tx_if_tready = axis_tx_pipe_tready;
-                assign axis_tx_pipe_tlast = axis_tx_if_tlast;
-                assign axis_tx_pipe_tuser = axis_tx_if_tuser;
-
-            end
-
-            axis_pipeline_fifo #(
-                .DATA_WIDTH(AXIS_SYNC_DATA_WIDTH),
-                .KEEP_ENABLE(AXIS_SYNC_KEEP_WIDTH > 1),
-                .KEEP_WIDTH(AXIS_SYNC_KEEP_WIDTH),
-                .LAST_ENABLE(1),
-                .ID_ENABLE(0),
-                .DEST_ENABLE(0),
-                .USER_ENABLE(1),
-                .USER_WIDTH(AXIS_TX_USER_WIDTH),
-                .LENGTH(AXIS_TX_PIPELINE)
-            )
-            tx_pipeline_fifo_inst (
-                .clk(clk),
-                .rst(rst),
-
-                // AXI input
-                .s_axis_tdata(axis_tx_pipe_tdata),
-                .s_axis_tkeep(axis_tx_pipe_tkeep),
-                .s_axis_tvalid(axis_tx_pipe_tvalid),
-                .s_axis_tready(axis_tx_pipe_tready),
-                .s_axis_tlast(axis_tx_pipe_tlast),
-                .s_axis_tid(0),
-                .s_axis_tdest(0),
-                .s_axis_tuser(axis_tx_pipe_tuser),
-
-                // AXI output
-                .m_axis_tdata(axis_tx_async_fifo_tdata),
-                .m_axis_tkeep(axis_tx_async_fifo_tkeep),
-                .m_axis_tvalid(axis_tx_async_fifo_tvalid),
-                .m_axis_tready(axis_tx_async_fifo_tready),
-                .m_axis_tlast(axis_tx_async_fifo_tlast),
-                .m_axis_tid(),
-                .m_axis_tdest(),
-                .m_axis_tuser(axis_tx_async_fifo_tuser)
-            );
-
-            axis_async_fifo_adapter #(
-                .DEPTH(MAX_TX_SIZE),
-                .S_DATA_WIDTH(AXIS_SYNC_DATA_WIDTH),
-                .S_KEEP_ENABLE(AXIS_SYNC_KEEP_WIDTH > 1),
-                .S_KEEP_WIDTH(AXIS_SYNC_KEEP_WIDTH),
-                .M_DATA_WIDTH(AXIS_DATA_WIDTH),
-                .M_KEEP_ENABLE(AXIS_KEEP_WIDTH > 1),
-                .M_KEEP_WIDTH(AXIS_KEEP_WIDTH),
-                .ID_ENABLE(0),
-                .DEST_ENABLE(0),
-                .USER_ENABLE(1),
-                .USER_WIDTH(AXIS_TX_USER_WIDTH),
-                .FRAME_FIFO(1),
-                .USER_BAD_FRAME_VALUE(1'b1),
-                .USER_BAD_FRAME_MASK(1'b1),
-                .DROP_BAD_FRAME(1),
-                .DROP_WHEN_FULL(0)
-            )
-            tx_async_fifo_inst (
-                // AXI input
-                .s_clk(clk),
-                .s_rst(rst),
-                .s_axis_tdata(axis_tx_async_fifo_tdata),
-                .s_axis_tkeep(axis_tx_async_fifo_tkeep),
-                .s_axis_tvalid(axis_tx_async_fifo_tvalid),
-                .s_axis_tready(axis_tx_async_fifo_tready),
-                .s_axis_tlast(axis_tx_async_fifo_tlast),
-                .s_axis_tid(0),
-                .s_axis_tdest(0),
-                .s_axis_tuser(axis_tx_async_fifo_tuser),
-
-                // AXI output
-                .m_clk(port_tx_clk),
-                .m_rst(port_tx_rst),
-                .m_axis_tdata(axis_tx_out_tdata),
-                .m_axis_tkeep(axis_tx_out_tkeep),
-                .m_axis_tvalid(axis_tx_out_tvalid),
-                .m_axis_tready(axis_tx_out_tready),
-                .m_axis_tlast(axis_tx_out_tlast),
-                .m_axis_tid(),
-                .m_axis_tdest(),
-                .m_axis_tuser(axis_tx_out_tuser),
-
-                // Status
-                .s_status_overflow(),
-                .s_status_bad_frame(),
-                .s_status_good_frame(),
-                .m_status_overflow(),
-                .m_status_bad_frame(),
-                .m_status_good_frame()
-            );
-
-            if (APP_ENABLE && APP_AXIS_DIRECT_ENABLE) begin
-
-                assign app_s_axis_direct_tx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH] = axis_tx_out_tdata;
-                assign app_s_axis_direct_tx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH] = axis_tx_out_tkeep;
-                assign app_s_axis_direct_tx_tvalid[n*PORTS_PER_IF+m +: 1] = axis_tx_out_tvalid;
-                assign axis_tx_out_tready = app_s_axis_direct_tx_tready[n*PORTS_PER_IF+m +: 1];
-                assign app_s_axis_direct_tx_tlast[n*PORTS_PER_IF+m +: 1] = axis_tx_out_tlast;
-                assign app_s_axis_direct_tx_tuser[(n*PORTS_PER_IF+m)*AXIS_TX_USER_WIDTH +: AXIS_TX_USER_WIDTH] = axis_tx_out_tuser;
-
-                assign axis_tx_l2_tdata = app_m_axis_direct_tx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH];
-                assign axis_tx_l2_tkeep = app_m_axis_direct_tx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH];
-                assign axis_tx_l2_tvalid = app_m_axis_direct_tx_tvalid[n*PORTS_PER_IF+m +: 1];
-                assign app_m_axis_direct_tx_tready[n*PORTS_PER_IF+m +: 1] = axis_tx_l2_tready;
-                assign axis_tx_l2_tlast = app_m_axis_direct_tx_tlast[n*PORTS_PER_IF+m +: 1];
-                assign axis_tx_l2_tuser = app_m_axis_direct_tx_tuser[(n*PORTS_PER_IF+m)*AXIS_TX_USER_WIDTH +: AXIS_TX_USER_WIDTH];
-
-            end else begin
-
-                assign app_s_axis_direct_tx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH] = 0;
-                assign app_s_axis_direct_tx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH] = 0;
-                assign app_s_axis_direct_tx_tvalid[n*PORTS_PER_IF+m +: 1] = 0;
-                assign app_s_axis_direct_tx_tlast[n*PORTS_PER_IF+m +: 1] = 0;
-                assign app_s_axis_direct_tx_tuser[(n*PORTS_PER_IF+m)*AXIS_TX_USER_WIDTH +: AXIS_TX_USER_WIDTH] = 0;
-
-                assign app_m_axis_direct_tx_tready[n*PORTS_PER_IF+m +: 1] = 0;
-
-                assign axis_tx_l2_tdata = axis_tx_out_tdata;
-                assign axis_tx_l2_tkeep = axis_tx_out_tkeep;
-                assign axis_tx_l2_tvalid = axis_tx_out_tvalid;
-                assign axis_tx_out_tready = axis_tx_l2_tready;
-                assign axis_tx_l2_tlast = axis_tx_out_tlast;
-                assign axis_tx_l2_tuser = axis_tx_out_tuser;
-
-            end
-
-            mqnic_l2_egress #(
-                .AXIS_DATA_WIDTH(AXIS_DATA_WIDTH),
-                .AXIS_KEEP_WIDTH(AXIS_KEEP_WIDTH),
-                .AXIS_USER_WIDTH(AXIS_TX_USER_WIDTH)
-            )
-            mqnic_l2_egress_inst (
-                .clk(port_tx_clk),
-                .rst(port_tx_rst),
-
-                /*
-                 * Transmit data input
-                 */
-                .s_axis_tdata(axis_tx_l2_tdata),
-                .s_axis_tkeep(axis_tx_l2_tkeep),
-                .s_axis_tvalid(axis_tx_l2_tvalid),
-                .s_axis_tready(axis_tx_l2_tready),
-                .s_axis_tlast(axis_tx_l2_tlast),
-                .s_axis_tuser(axis_tx_l2_tuser),
-
-                /*
-                 * Transmit data output
-                 */
-                .m_axis_tdata(axis_tx_tdata),
-                .m_axis_tkeep(axis_tx_tkeep),
-                .m_axis_tvalid(axis_tx_tvalid),
-                .m_axis_tready(axis_tx_tready),
-                .m_axis_tlast(axis_tx_tlast),
-                .m_axis_tuser(axis_tx_tuser)
-            );
-
-            assign m_axis_tx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH] = axis_tx_tdata;
-            assign m_axis_tx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH] = axis_tx_tkeep;
-            assign m_axis_tx_tvalid[n*PORTS_PER_IF+m +: 1] = axis_tx_tvalid;
-            assign axis_tx_tready = m_axis_tx_tready[n*PORTS_PER_IF+m +: 1];
-            assign m_axis_tx_tlast[n*PORTS_PER_IF+m +: 1] = axis_tx_tlast;
-            assign m_axis_tx_tuser[(n*PORTS_PER_IF+m)*AXIS_TX_USER_WIDTH +: AXIS_TX_USER_WIDTH] = axis_tx_tuser;
-
-            // RX FIFOs
-            wire [AXIS_DATA_WIDTH-1:0] axis_rx_tdata;
-            wire [AXIS_KEEP_WIDTH-1:0] axis_rx_tkeep;
-            wire axis_rx_tvalid;
-            wire axis_rx_tready;
-            wire axis_rx_tlast;
-            wire [AXIS_RX_USER_WIDTH-1:0] axis_rx_tuser;
-
-            wire [AXIS_DATA_WIDTH-1:0] axis_rx_l2_tdata;
-            wire [AXIS_KEEP_WIDTH-1:0] axis_rx_l2_tkeep;
-            wire axis_rx_l2_tvalid;
-            wire axis_rx_l2_tready;
-            wire axis_rx_l2_tlast;
-            wire [AXIS_RX_USER_WIDTH-1:0] axis_rx_l2_tuser;
-
-            wire [AXIS_DATA_WIDTH-1:0] axis_rx_in_tdata;
-            wire [AXIS_KEEP_WIDTH-1:0] axis_rx_in_tkeep;
-            wire axis_rx_in_tvalid;
-            wire axis_rx_in_tready;
-            wire axis_rx_in_tlast;
-            wire [AXIS_RX_USER_WIDTH-1:0] axis_rx_in_tuser;
-
-            wire [AXIS_SYNC_DATA_WIDTH-1:0] axis_rx_async_fifo_tdata;
-            wire [AXIS_SYNC_KEEP_WIDTH-1:0] axis_rx_async_fifo_tkeep;
-            wire axis_rx_async_fifo_tvalid;
-            wire axis_rx_async_fifo_tready;
-            wire axis_rx_async_fifo_tlast;
-            wire [AXIS_RX_USER_WIDTH-1:0] axis_rx_async_fifo_tuser;
-
-            wire [AXIS_SYNC_DATA_WIDTH-1:0] axis_rx_pipe_tdata;
-            wire [AXIS_SYNC_KEEP_WIDTH-1:0] axis_rx_pipe_tkeep;
-            wire axis_rx_pipe_tvalid;
-            wire axis_rx_pipe_tready;
-            wire axis_rx_pipe_tlast;
-            wire [AXIS_RX_USER_WIDTH-1:0] axis_rx_pipe_tuser;
-
-            wire [AXIS_SYNC_DATA_WIDTH-1:0] axis_rx_if_tdata;
-            wire [AXIS_SYNC_KEEP_WIDTH-1:0] axis_rx_if_tkeep;
-            wire axis_rx_if_tvalid;
-            wire axis_rx_if_tready;
-            wire axis_rx_if_tlast;
-            wire [AXIS_RX_USER_WIDTH-1:0] axis_rx_if_tuser;
-
-            assign axis_rx_tdata = s_axis_rx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH];
-            assign axis_rx_tkeep = s_axis_rx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH];
-            assign axis_rx_tvalid = s_axis_rx_tvalid[n*PORTS_PER_IF+m +: 1];
-            assign s_axis_rx_tready[n*PORTS_PER_IF+m +: 1] = axis_rx_tready;
-            assign axis_rx_tlast = s_axis_rx_tlast[n*PORTS_PER_IF+m +: 1];
-            assign axis_rx_tuser = s_axis_rx_tuser[(n*PORTS_PER_IF+m)*AXIS_RX_USER_WIDTH +: AXIS_RX_USER_WIDTH];
-
-            mqnic_l2_ingress #(
-                .AXIS_DATA_WIDTH(AXIS_DATA_WIDTH),
-                .AXIS_KEEP_WIDTH(AXIS_KEEP_WIDTH),
-                .AXIS_USER_WIDTH(AXIS_RX_USER_WIDTH),
-                .AXIS_USE_READY(AXIS_RX_USE_READY)
-            )
-            mqnic_l2_ingress_inst (
-                .clk(port_rx_clk),
-                .rst(port_rx_rst),
-
-                /*
-                 * Receive data input
-                 */
-                .s_axis_tdata(axis_rx_tdata),
-                .s_axis_tkeep(axis_rx_tkeep),
-                .s_axis_tvalid(axis_rx_tvalid),
-                .s_axis_tready(axis_rx_tready),
-                .s_axis_tlast(axis_rx_tlast),
-                .s_axis_tuser(axis_rx_tuser),
-
-                /*
-                 * Receive data output
-                 */
-                .m_axis_tdata(axis_rx_l2_tdata),
-                .m_axis_tkeep(axis_rx_l2_tkeep),
-                .m_axis_tvalid(axis_rx_l2_tvalid),
-                .m_axis_tready(axis_rx_l2_tready),
-                .m_axis_tlast(axis_rx_l2_tlast),
-                .m_axis_tuser(axis_rx_l2_tuser)
-            );
-
-            if (APP_ENABLE && APP_AXIS_DIRECT_ENABLE) begin
-
-                assign app_s_axis_direct_rx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH] = axis_rx_l2_tdata;
-                assign app_s_axis_direct_rx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH] = axis_rx_l2_tkeep;
-                assign app_s_axis_direct_rx_tvalid[n*PORTS_PER_IF+m +: 1] = axis_rx_l2_tvalid;
-                assign axis_rx_l2_tready = app_s_axis_direct_rx_tready[n*PORTS_PER_IF+m +: 1];
-                assign app_s_axis_direct_rx_tlast[n*PORTS_PER_IF+m +: 1] = axis_rx_l2_tlast;
-                assign app_s_axis_direct_rx_tuser[(n*PORTS_PER_IF+m)*AXIS_RX_USER_WIDTH +: AXIS_RX_USER_WIDTH] = axis_rx_l2_tuser;
-
-                assign axis_rx_in_tdata = app_m_axis_direct_rx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH];
-                assign axis_rx_in_tkeep = app_m_axis_direct_rx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH];
-                assign axis_rx_in_tvalid = app_m_axis_direct_rx_tvalid[n*PORTS_PER_IF+m +: 1];
-                assign app_m_axis_direct_rx_tready[n*PORTS_PER_IF+m +: 1] = axis_rx_in_tready;
-                assign axis_rx_in_tlast = app_m_axis_direct_rx_tlast[n*PORTS_PER_IF+m +: 1];
-                assign axis_rx_in_tuser = app_m_axis_direct_rx_tuser[(n*PORTS_PER_IF+m)*AXIS_RX_USER_WIDTH +: AXIS_RX_USER_WIDTH];
-
-            end else begin
-
-                assign app_s_axis_direct_rx_tdata[(n*PORTS_PER_IF+m)*AXIS_DATA_WIDTH +: AXIS_DATA_WIDTH] = 0;
-                assign app_s_axis_direct_rx_tkeep[(n*PORTS_PER_IF+m)*AXIS_KEEP_WIDTH +: AXIS_KEEP_WIDTH] = 0;
-                assign app_s_axis_direct_rx_tvalid[n*PORTS_PER_IF+m +: 1] = 0;
-                assign app_s_axis_direct_rx_tlast[n*PORTS_PER_IF+m +: 1] = 0;
-                assign app_s_axis_direct_rx_tuser[(n*PORTS_PER_IF+m)*AXIS_RX_USER_WIDTH +: AXIS_RX_USER_WIDTH] = 0;
-
-                assign app_m_axis_direct_rx_tready[n*PORTS_PER_IF+m +: 1] = 0;
-
-                assign axis_rx_in_tdata = axis_rx_l2_tdata;
-                assign axis_rx_in_tkeep = axis_rx_l2_tkeep;
-                assign axis_rx_in_tvalid = axis_rx_l2_tvalid;
-                assign axis_rx_l2_tready = axis_rx_in_tready;
-                assign axis_rx_in_tlast = axis_rx_l2_tlast;
-                assign axis_rx_in_tuser = axis_rx_l2_tuser;
-
-            end
-
-            axis_async_fifo_adapter #(
-                .DEPTH(MAX_RX_SIZE),
-                .S_DATA_WIDTH(AXIS_DATA_WIDTH),
-                .S_KEEP_ENABLE(AXIS_KEEP_WIDTH > 1),
-                .S_KEEP_WIDTH(AXIS_KEEP_WIDTH),
-                .M_DATA_WIDTH(AXIS_SYNC_DATA_WIDTH),
-                .M_KEEP_ENABLE(AXIS_SYNC_KEEP_WIDTH > 1),
-                .M_KEEP_WIDTH(AXIS_SYNC_KEEP_WIDTH),
-                .ID_ENABLE(0),
-                .DEST_ENABLE(0),
-                .USER_ENABLE(1),
-                .USER_WIDTH(AXIS_RX_USER_WIDTH),
-                .FRAME_FIFO(1),
-                .USER_BAD_FRAME_VALUE(1'b1),
-                .USER_BAD_FRAME_MASK(1'b1),
-                .DROP_BAD_FRAME(1),
-                .DROP_WHEN_FULL(!AXIS_RX_USE_READY)
-            )
-            rx_async_fifo_inst (
-                // AXI input
-                .s_clk(port_rx_clk),
-                .s_rst(port_rx_rst),
-                .s_axis_tdata(axis_rx_in_tdata),
-                .s_axis_tkeep(axis_rx_in_tkeep),
-                .s_axis_tvalid(axis_rx_in_tvalid),
-                .s_axis_tready(axis_rx_in_tready),
-                .s_axis_tlast(axis_rx_in_tlast),
-                .s_axis_tid(0),
-                .s_axis_tdest(0),
-                .s_axis_tuser(axis_rx_in_tuser),
-
-                // AXI output
-                .m_clk(clk),
-                .m_rst(rst),
-                .m_axis_tdata(axis_rx_async_fifo_tdata),
-                .m_axis_tkeep(axis_rx_async_fifo_tkeep),
-                .m_axis_tvalid(axis_rx_async_fifo_tvalid),
-                .m_axis_tready(axis_rx_async_fifo_tready),
-                .m_axis_tlast(axis_rx_async_fifo_tlast),
-                .m_axis_tid(),
-                .m_axis_tdest(),
-                .m_axis_tuser(axis_rx_async_fifo_tuser),
-
-                // Status
-                .s_status_overflow(),
-                .s_status_bad_frame(),
-                .s_status_good_frame(),
-                .m_status_overflow(),
-                .m_status_bad_frame(),
-                .m_status_good_frame()
-            );
-
-            axis_pipeline_fifo #(
-                .DATA_WIDTH(AXIS_SYNC_DATA_WIDTH),
-                .KEEP_ENABLE(AXIS_SYNC_KEEP_WIDTH > 1),
-                .KEEP_WIDTH(AXIS_SYNC_KEEP_WIDTH),
-                .LAST_ENABLE(1),
-                .ID_ENABLE(0),
-                .DEST_ENABLE(0),
-                .USER_ENABLE(1),
-                .USER_WIDTH(AXIS_RX_USER_WIDTH),
-                .LENGTH(AXIS_RX_PIPELINE)
-            )
-            rx_pipeline_fifo_inst (
-                .clk(clk),
-                .rst(rst),
-
-                // AXI input
-                .s_axis_tdata(axis_rx_async_fifo_tdata),
-                .s_axis_tkeep(axis_rx_async_fifo_tkeep),
-                .s_axis_tvalid(axis_rx_async_fifo_tvalid),
-                .s_axis_tready(axis_rx_async_fifo_tready),
-                .s_axis_tlast(axis_rx_async_fifo_tlast),
-                .s_axis_tid(0),
-                .s_axis_tdest(0),
-                .s_axis_tuser(axis_rx_async_fifo_tuser),
-
-                // AXI output
-                .m_axis_tdata(axis_rx_pipe_tdata),
-                .m_axis_tkeep(axis_rx_pipe_tkeep),
-                .m_axis_tvalid(axis_rx_pipe_tvalid),
-                .m_axis_tready(axis_rx_pipe_tready),
-                .m_axis_tlast(axis_rx_pipe_tlast),
-                .m_axis_tid(),
-                .m_axis_tdest(),
-                .m_axis_tuser(axis_rx_pipe_tuser)
-            );
-
-            if (APP_ENABLE && APP_AXIS_SYNC_ENABLE) begin
-
-                assign app_s_axis_sync_rx_tdata[(n*PORTS_PER_IF+m)*AXIS_SYNC_DATA_WIDTH +: AXIS_SYNC_DATA_WIDTH] = axis_rx_pipe_tdata;
-                assign app_s_axis_sync_rx_tkeep[(n*PORTS_PER_IF+m)*AXIS_SYNC_KEEP_WIDTH +: AXIS_SYNC_KEEP_WIDTH] = axis_rx_pipe_tkeep;
-                assign app_s_axis_sync_rx_tvalid[n*PORTS_PER_IF+m] = axis_rx_pipe_tvalid;
-                assign axis_rx_pipe_tready = app_s_axis_sync_rx_tready[n*PORTS_PER_IF+m +: 1];
-                assign app_s_axis_sync_rx_tlast[n*PORTS_PER_IF+m] = axis_rx_pipe_tlast;
-                assign app_s_axis_sync_rx_tuser[(n*PORTS_PER_IF+m)*AXIS_RX_USER_WIDTH +: AXIS_RX_USER_WIDTH] = axis_rx_pipe_tuser;
-
-                assign axis_rx_if_tdata = app_m_axis_sync_rx_tdata[(n*PORTS_PER_IF+m)*AXIS_SYNC_DATA_WIDTH +: AXIS_SYNC_DATA_WIDTH];
-                assign axis_rx_if_tkeep = app_m_axis_sync_rx_tkeep[(n*PORTS_PER_IF+m)*AXIS_SYNC_KEEP_WIDTH +: AXIS_SYNC_KEEP_WIDTH];
-                assign axis_rx_if_tvalid = app_m_axis_sync_rx_tvalid[n*PORTS_PER_IF+m +: 1];
-                assign app_m_axis_sync_rx_tready[n*PORTS_PER_IF+m +: 1] = axis_rx_if_tready;
-                assign axis_rx_if_tlast = app_m_axis_sync_rx_tlast[n*PORTS_PER_IF+m +: 1];
-                assign axis_rx_if_tuser = app_m_axis_sync_rx_tuser[(n*PORTS_PER_IF+m)*AXIS_RX_USER_WIDTH +: AXIS_RX_USER_WIDTH];
-
-            end else begin
-
-                assign app_s_axis_sync_rx_tdata[(n*PORTS_PER_IF+m)*AXIS_SYNC_DATA_WIDTH +: AXIS_SYNC_DATA_WIDTH] = 0;
-                assign app_s_axis_sync_rx_tkeep[(n*PORTS_PER_IF+m)*AXIS_SYNC_KEEP_WIDTH +: AXIS_SYNC_KEEP_WIDTH] = 0;
-                assign app_s_axis_sync_rx_tvalid[n*PORTS_PER_IF+m +: 1] = 0;
-                assign app_s_axis_sync_rx_tlast[n*PORTS_PER_IF+m +: 1] = 0;
-                assign app_s_axis_sync_rx_tuser[(n*PORTS_PER_IF+m)*AXIS_RX_USER_WIDTH +: AXIS_RX_USER_WIDTH] = 0;
-
-                assign app_m_axis_sync_rx_tready[n*PORTS_PER_IF+m +: 1] = 0;
-
-                assign axis_rx_if_tdata = axis_rx_pipe_tdata;
-                assign axis_rx_if_tkeep = axis_rx_pipe_tkeep;
-                assign axis_rx_if_tvalid = axis_rx_pipe_tvalid;
-                assign axis_rx_pipe_tready = axis_rx_if_tready;
-                assign axis_rx_if_tlast = axis_rx_pipe_tlast;
-                assign axis_rx_if_tuser = axis_rx_pipe_tuser;
-
-            end
-
-            assign axis_if_rx_fifo_tdata[m*AXIS_SYNC_DATA_WIDTH +: AXIS_SYNC_DATA_WIDTH] = axis_rx_if_tdata;
-            assign axis_if_rx_fifo_tkeep[m*AXIS_SYNC_KEEP_WIDTH +: AXIS_SYNC_KEEP_WIDTH] = axis_rx_if_tkeep;
-            assign axis_if_rx_fifo_tvalid[m +: 1] = axis_rx_if_tvalid;
-            assign axis_rx_if_tready = axis_if_rx_fifo_tready[m +: 1];
-            assign axis_if_rx_fifo_tlast[m +: 1] = axis_rx_if_tlast;
-            assign axis_if_rx_fifo_tuser[m*AXIS_RX_USER_WIDTH +: AXIS_RX_USER_WIDTH] = axis_rx_if_tuser;
+            assign tx_ptp_ts_96[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH] = port_tx_ptp_ts_96;
+            assign tx_ptp_ts_step[n*PORTS_PER_IF+m] = port_tx_ptp_ts_step;
+
+            assign rx_ptp_ts_96[(n*PORTS_PER_IF+m)*PTP_TS_WIDTH +: PTP_TS_WIDTH] = port_rx_ptp_ts_96;
+            assign rx_ptp_ts_step[n*PORTS_PER_IF+m] = port_rx_ptp_ts_step;
 
         end
 
@@ -3526,20 +2764,22 @@ if (APP_ENABLE) begin : app
         .PORT_COUNT(PORT_COUNT),
 
         // PTP configuration
+        .PTP_CLK_PERIOD_NS_NUM(PTP_CLK_PERIOD_NS_NUM),
+        .PTP_CLK_PERIOD_NS_DENOM(PTP_CLK_PERIOD_NS_DENOM),
         .PTP_TS_WIDTH(PTP_TS_WIDTH),
-        .PTP_TAG_WIDTH(PTP_TAG_WIDTH),
-        .PTP_PERIOD_NS_WIDTH(PTP_PERIOD_NS_WIDTH),
-        .PTP_OFFSET_NS_WIDTH(PTP_OFFSET_NS_WIDTH),
-        .PTP_FNS_WIDTH(PTP_FNS_WIDTH),
-        .PTP_PERIOD_NS(PTP_PERIOD_NS),
-        .PTP_PERIOD_FNS(PTP_PERIOD_FNS),
         .PTP_USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK),
         .PTP_PORT_CDC_PIPELINE(PTP_PORT_CDC_PIPELINE),
         .PTP_PEROUT_ENABLE(PTP_PEROUT_ENABLE),
         .PTP_PEROUT_COUNT(PTP_PEROUT_COUNT),
+
+        // Interface configuration
         .PTP_TS_ENABLE(PTP_TS_ENABLE),
+        .TX_TAG_WIDTH(TX_TAG_WIDTH),
+        .MAX_TX_SIZE(MAX_TX_SIZE),
+        .MAX_RX_SIZE(MAX_RX_SIZE),
 
         // Application configuration
+        .APP_ID(APP_ID),
         .APP_CTRL_ENABLE(APP_CTRL_ENABLE),
         .APP_DMA_ENABLE(APP_DMA_ENABLE),
         .APP_AXIS_DIRECT_ENABLE(APP_AXIS_DIRECT_ENABLE),
@@ -3549,6 +2789,8 @@ if (APP_ENABLE) begin : app
 
         // DMA interface configuration
         .DMA_ADDR_WIDTH(DMA_ADDR_WIDTH),
+        .DMA_IMM_ENABLE(DMA_IMM_ENABLE),
+        .DMA_IMM_WIDTH(DMA_IMM_WIDTH),
         .DMA_LEN_WIDTH(DMA_LEN_WIDTH),
         .DMA_TAG_WIDTH(IF_DMA_TAG_WIDTH),
         .RAM_SEG_COUNT(RAM_SEG_COUNT),
@@ -3671,6 +2913,8 @@ if (APP_ENABLE) begin : app
         .m_axis_ctrl_dma_write_desc_dma_addr(app_ctrl_dma_write_desc_dma_addr),
         .m_axis_ctrl_dma_write_desc_ram_sel(app_ctrl_dma_write_desc_ram_sel),
         .m_axis_ctrl_dma_write_desc_ram_addr(app_ctrl_dma_write_desc_ram_addr),
+        .m_axis_ctrl_dma_write_desc_imm(app_ctrl_dma_write_desc_imm),
+        .m_axis_ctrl_dma_write_desc_imm_en(app_ctrl_dma_write_desc_imm_en),
         .m_axis_ctrl_dma_write_desc_len(app_ctrl_dma_write_desc_len),
         .m_axis_ctrl_dma_write_desc_tag(app_ctrl_dma_write_desc_tag),
         .m_axis_ctrl_dma_write_desc_valid(app_ctrl_dma_write_desc_valid),
@@ -3707,6 +2951,8 @@ if (APP_ENABLE) begin : app
         .m_axis_data_dma_write_desc_dma_addr(app_data_dma_write_desc_dma_addr),
         .m_axis_data_dma_write_desc_ram_sel(app_data_dma_write_desc_ram_sel),
         .m_axis_data_dma_write_desc_ram_addr(app_data_dma_write_desc_ram_addr),
+        .m_axis_data_dma_write_desc_imm(app_data_dma_write_desc_imm),
+        .m_axis_data_dma_write_desc_imm_en(app_data_dma_write_desc_imm_en),
         .m_axis_data_dma_write_desc_len(app_data_dma_write_desc_len),
         .m_axis_data_dma_write_desc_tag(app_data_dma_write_desc_tag),
         .m_axis_data_dma_write_desc_valid(app_data_dma_write_desc_valid),
@@ -3758,10 +3004,15 @@ if (APP_ENABLE) begin : app
         /*
          * PTP clock
          */
+        .ptp_clk(ptp_clk),
+        .ptp_rst(ptp_rst),
         .ptp_sample_clk(ptp_sample_clk),
         .ptp_pps(ptp_pps),
         .ptp_ts_96(ptp_ts_96),
         .ptp_ts_step(ptp_ts_step),
+        .ptp_sync_pps(ptp_sync_pps),
+        .ptp_sync_ts_96(ptp_sync_ts_96),
+        .ptp_sync_ts_step(ptp_sync_ts_step),
         .ptp_perout_locked(ptp_perout_locked),
         .ptp_perout_error(ptp_perout_error),
         .ptp_perout_pulse(ptp_perout_pulse),
@@ -3786,15 +3037,15 @@ if (APP_ENABLE) begin : app
         .m_axis_direct_tx_tlast(app_m_axis_direct_tx_tlast),
         .m_axis_direct_tx_tuser(app_m_axis_direct_tx_tuser),
 
-        .s_axis_direct_tx_ptp_ts(app_s_axis_direct_tx_ptp_ts),
-        .s_axis_direct_tx_ptp_ts_tag(app_s_axis_direct_tx_ptp_ts_tag),
-        .s_axis_direct_tx_ptp_ts_valid(app_s_axis_direct_tx_ptp_ts_valid),
-        .s_axis_direct_tx_ptp_ts_ready(app_s_axis_direct_tx_ptp_ts_ready),
+        .s_axis_direct_tx_cpl_ts(app_s_axis_direct_tx_cpl_ts),
+        .s_axis_direct_tx_cpl_tag(app_s_axis_direct_tx_cpl_tag),
+        .s_axis_direct_tx_cpl_valid(app_s_axis_direct_tx_cpl_valid),
+        .s_axis_direct_tx_cpl_ready(app_s_axis_direct_tx_cpl_ready),
 
-        .m_axis_direct_tx_ptp_ts(app_m_axis_direct_tx_ptp_ts),
-        .m_axis_direct_tx_ptp_ts_tag(app_m_axis_direct_tx_ptp_ts_tag),
-        .m_axis_direct_tx_ptp_ts_valid(app_m_axis_direct_tx_ptp_ts_valid),
-        .m_axis_direct_tx_ptp_ts_ready(app_m_axis_direct_tx_ptp_ts_ready),
+        .m_axis_direct_tx_cpl_ts(app_m_axis_direct_tx_cpl_ts),
+        .m_axis_direct_tx_cpl_tag(app_m_axis_direct_tx_cpl_tag),
+        .m_axis_direct_tx_cpl_valid(app_m_axis_direct_tx_cpl_valid),
+        .m_axis_direct_tx_cpl_ready(app_m_axis_direct_tx_cpl_ready),
 
         .direct_rx_clk(app_direct_rx_clk),
         .direct_rx_rst(app_direct_rx_rst),
@@ -3830,15 +3081,15 @@ if (APP_ENABLE) begin : app
         .m_axis_sync_tx_tlast(app_m_axis_sync_tx_tlast),
         .m_axis_sync_tx_tuser(app_m_axis_sync_tx_tuser),
 
-        .s_axis_sync_tx_ptp_ts(app_s_axis_sync_tx_ptp_ts),
-        .s_axis_sync_tx_ptp_ts_tag(app_s_axis_sync_tx_ptp_ts_tag),
-        .s_axis_sync_tx_ptp_ts_valid(app_s_axis_sync_tx_ptp_ts_valid),
-        .s_axis_sync_tx_ptp_ts_ready(app_s_axis_sync_tx_ptp_ts_ready),
+        .s_axis_sync_tx_cpl_ts(app_s_axis_sync_tx_cpl_ts),
+        .s_axis_sync_tx_cpl_tag(app_s_axis_sync_tx_cpl_tag),
+        .s_axis_sync_tx_cpl_valid(app_s_axis_sync_tx_cpl_valid),
+        .s_axis_sync_tx_cpl_ready(app_s_axis_sync_tx_cpl_ready),
 
-        .m_axis_sync_tx_ptp_ts(app_m_axis_sync_tx_ptp_ts),
-        .m_axis_sync_tx_ptp_ts_tag(app_m_axis_sync_tx_ptp_ts_tag),
-        .m_axis_sync_tx_ptp_ts_valid(app_m_axis_sync_tx_ptp_ts_valid),
-        .m_axis_sync_tx_ptp_ts_ready(app_m_axis_sync_tx_ptp_ts_ready),
+        .m_axis_sync_tx_cpl_ts(app_m_axis_sync_tx_cpl_ts),
+        .m_axis_sync_tx_cpl_tag(app_m_axis_sync_tx_cpl_tag),
+        .m_axis_sync_tx_cpl_valid(app_m_axis_sync_tx_cpl_valid),
+        .m_axis_sync_tx_cpl_ready(app_m_axis_sync_tx_cpl_ready),
 
         .s_axis_sync_rx_tdata(app_s_axis_sync_rx_tdata),
         .s_axis_sync_rx_tkeep(app_s_axis_sync_rx_tkeep),
@@ -3875,15 +3126,15 @@ if (APP_ENABLE) begin : app
         .m_axis_if_tx_tdest(app_m_axis_if_tx_tdest),
         .m_axis_if_tx_tuser(app_m_axis_if_tx_tuser),
 
-        .s_axis_if_tx_ptp_ts(app_s_axis_if_tx_ptp_ts),
-        .s_axis_if_tx_ptp_ts_tag(app_s_axis_if_tx_ptp_ts_tag),
-        .s_axis_if_tx_ptp_ts_valid(app_s_axis_if_tx_ptp_ts_valid),
-        .s_axis_if_tx_ptp_ts_ready(app_s_axis_if_tx_ptp_ts_ready),
+        .s_axis_if_tx_cpl_ts(app_s_axis_if_tx_cpl_ts),
+        .s_axis_if_tx_cpl_tag(app_s_axis_if_tx_cpl_tag),
+        .s_axis_if_tx_cpl_valid(app_s_axis_if_tx_cpl_valid),
+        .s_axis_if_tx_cpl_ready(app_s_axis_if_tx_cpl_ready),
 
-        .m_axis_if_tx_ptp_ts(app_m_axis_if_tx_ptp_ts),
-        .m_axis_if_tx_ptp_ts_tag(app_m_axis_if_tx_ptp_ts_tag),
-        .m_axis_if_tx_ptp_ts_valid(app_m_axis_if_tx_ptp_ts_valid),
-        .m_axis_if_tx_ptp_ts_ready(app_m_axis_if_tx_ptp_ts_ready),
+        .m_axis_if_tx_cpl_ts(app_m_axis_if_tx_cpl_ts),
+        .m_axis_if_tx_cpl_tag(app_m_axis_if_tx_cpl_tag),
+        .m_axis_if_tx_cpl_valid(app_m_axis_if_tx_cpl_valid),
+        .m_axis_if_tx_cpl_ready(app_m_axis_if_tx_cpl_ready),
 
         .s_axis_if_rx_tdata(app_s_axis_if_rx_tdata),
         .s_axis_if_rx_tkeep(app_s_axis_if_rx_tkeep),
@@ -3959,6 +3210,8 @@ end else begin
     assign app_ctrl_dma_write_desc_dma_addr = 0;
     assign app_ctrl_dma_write_desc_ram_sel = 0;
     assign app_ctrl_dma_write_desc_ram_addr = 0;
+    assign app_ctrl_dma_write_desc_imm = 0;
+    assign app_ctrl_dma_write_desc_imm_en = 0;
     assign app_ctrl_dma_write_desc_len = 0;
     assign app_ctrl_dma_write_desc_tag = 0;
     assign app_ctrl_dma_write_desc_valid = 0;
@@ -3973,6 +3226,8 @@ end else begin
     assign app_data_dma_write_desc_dma_addr = 0;
     assign app_data_dma_write_desc_ram_sel = 0;
     assign app_data_dma_write_desc_ram_addr = 0;
+    assign app_data_dma_write_desc_imm = 0;
+    assign app_data_dma_write_desc_imm_en = 0;
     assign app_data_dma_write_desc_len = 0;
     assign app_data_dma_write_desc_tag = 0;
     assign app_data_dma_write_desc_valid = 0;
@@ -3997,11 +3252,11 @@ end else begin
     assign app_m_axis_direct_tx_tlast = 0;
     assign app_m_axis_direct_tx_tuser = 0;
 
-    assign app_s_axis_direct_tx_ptp_ts_ready = 0;
+    assign app_s_axis_direct_tx_cpl_ready = 0;
 
-    assign app_m_axis_direct_tx_ptp_ts = 0;
-    assign app_m_axis_direct_tx_ptp_ts_tag = 0;
-    assign app_m_axis_direct_tx_ptp_ts_valid = 0;
+    assign app_m_axis_direct_tx_cpl_ts = 0;
+    assign app_m_axis_direct_tx_cpl_tag = 0;
+    assign app_m_axis_direct_tx_cpl_valid = 0;
 
     assign app_s_axis_direct_rx_tready = 0;
 
@@ -4019,11 +3274,11 @@ end else begin
     assign app_m_axis_sync_tx_tlast = 0;
     assign app_m_axis_sync_tx_tuser = 0;
 
-    assign app_s_axis_sync_tx_ptp_ts_ready = 0;
+    assign app_s_axis_sync_tx_cpl_ready = 0;
 
-    assign app_m_axis_sync_tx_ptp_ts = 0;
-    assign app_m_axis_sync_tx_ptp_ts_tag = 0;
-    assign app_m_axis_sync_tx_ptp_ts_valid = 0;
+    assign app_m_axis_sync_tx_cpl_ts = 0;
+    assign app_m_axis_sync_tx_cpl_tag = 0;
+    assign app_m_axis_sync_tx_cpl_valid = 0;
 
     assign app_s_axis_sync_rx_tready = 0;
 
@@ -4043,11 +3298,11 @@ end else begin
     assign app_m_axis_if_tx_tdest = 0;
     assign app_m_axis_if_tx_tuser = 0;
 
-    assign app_s_axis_if_tx_ptp_ts_ready = 0;
+    assign app_s_axis_if_tx_cpl_ready = 0;
 
-    assign app_m_axis_if_tx_ptp_ts = 0;
-    assign app_m_axis_if_tx_ptp_ts_tag = 0;
-    assign app_m_axis_if_tx_ptp_ts_valid = 0;
+    assign app_m_axis_if_tx_cpl_ts = 0;
+    assign app_m_axis_if_tx_cpl_tag = 0;
+    assign app_m_axis_if_tx_cpl_valid = 0;
 
     assign app_s_axis_if_rx_tready = 0;
 

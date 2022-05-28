@@ -36,11 +36,11 @@
 #include "mqnic.h"
 
 int mqnic_create_sched_block(struct mqnic_if *interface, struct mqnic_sched_block **block_ptr,
-		int index, struct reg_block *block_rb)
+		int index, struct mqnic_reg_block *block_rb)
 {
 	struct device *dev = interface->dev;
 	struct mqnic_sched_block *block;
-	struct reg_block *rb;
+	struct mqnic_reg_block *rb;
 	u32 offset;
 	int ret = 0;
 
@@ -61,7 +61,7 @@ int mqnic_create_sched_block(struct mqnic_if *interface, struct mqnic_sched_bloc
 
 	offset = ioread32(block_rb->regs + MQNIC_RB_SCHED_BLOCK_REG_OFFSET);
 
-	block->rb_list = enumerate_reg_block_list(interface->hw_addr, offset, interface->hw_regs_size - offset);
+	block->rb_list = mqnic_enumerate_reg_block_list(interface->hw_addr, offset, interface->hw_regs_size - offset);
 
 	if (!block->rb_list) {
 		ret = -EIO;
@@ -70,12 +70,12 @@ int mqnic_create_sched_block(struct mqnic_if *interface, struct mqnic_sched_bloc
 	}
 
 	dev_info(dev, "Scheduler block-level register blocks:");
-	for (rb = block->rb_list; rb->type && rb->version; rb++)
-		dev_info(dev, " type 0x%08x (v %d.%d.%d.%d)", rb->type, rb->version >> 24, 
+	for (rb = block->rb_list; rb->regs; rb++)
+		dev_info(dev, " type 0x%08x (v %d.%d.%d.%d)", rb->type, rb->version >> 24,
 				(rb->version >> 16) & 0xff, (rb->version >> 8) & 0xff, rb->version & 0xff);
 
 	block->sched_count = 0;
-	for (rb = block->rb_list; rb->type && rb->version; rb++) {
+	for (rb = block->rb_list; rb->regs; rb++) {
 		if (rb->type == MQNIC_RB_SCHED_RR_TYPE && rb->version == MQNIC_RB_SCHED_RR_VER) {
 			ret = mqnic_create_scheduler(block, &block->sched[block->sched_count],
 					block->sched_count, rb);
@@ -110,7 +110,7 @@ void mqnic_destroy_sched_block(struct mqnic_sched_block **block_ptr)
 			mqnic_destroy_scheduler(&block->sched[k]);
 
 	if (block->rb_list)
-		free_reg_block_list(block->rb_list);
+		mqnic_free_reg_block_list(block->rb_list);
 
 	*block_ptr = NULL;
 	kfree(block);
@@ -127,6 +127,7 @@ int mqnic_activate_sched_block(struct mqnic_sched_block *block)
 
 	return 0;
 }
+EXPORT_SYMBOL(mqnic_activate_sched_block);
 
 void mqnic_deactivate_sched_block(struct mqnic_sched_block *block)
 {
@@ -137,3 +138,4 @@ void mqnic_deactivate_sched_block(struct mqnic_sched_block *block)
 		if (block->sched[k])
 			mqnic_scheduler_disable(block->sched[k]);
 }
+EXPORT_SYMBOL(mqnic_deactivate_sched_block);

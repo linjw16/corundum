@@ -42,10 +42,9 @@ either expressed or implied, of The Regents of the University of California.
 #include <sys/stat.h>
 #include <linux/pci.h>
 
-#include "mqnic.h"
+#include <mqnic/mqnic.h>
 #include "bitfile.h"
 #include "flash.h"
-#include "fpga_id.h"
 
 #define MAX_SEGMENTS 8
 
@@ -123,11 +122,13 @@ static void usage(char *name)
     fprintf(stderr,
         "usage: %s [options]\n"
         " -d name    device to open (/dev/mqnic0)\n"
-        " -s slot    slot to program (default 1)\n"
+        " -s slot    slot to program\n"
         " -r file    read flash to file\n"
         " -w file    write and verify flash from file\n"
+        " -e         erase flash\n"
         " -b         boot FPGA from flash\n"
-        " -t         hot reset FPGA\n",
+        " -t         hot reset FPGA\n"
+        " -y         no interactive confirm\n",
         name);
 }
 
@@ -558,12 +559,14 @@ int main(int argc, char *argv[])
 
     char action_read = 0;
     char action_write = 0;
+    char action_erase = 0;
     char action_boot = 0;
     char action_reset = 0;
+    char no_confirm = 0;
 
     struct mqnic *dev = NULL;
 
-    struct reg_block *flash_rb = NULL;
+    struct mqnic_reg_block *flash_rb = NULL;
 
     struct flash_device *pri_flash = NULL;
     struct flash_device *sec_flash = NULL;
@@ -575,7 +578,7 @@ int main(int argc, char *argv[])
     name = strrchr(argv[0], '/');
     name = name ? 1+name : argv[0];
 
-    while ((opt = getopt(argc, argv, "d:s:r:w:bth?")) != EOF)
+    while ((opt = getopt(argc, argv, "d:s:r:w:ebtyh?")) != EOF)
     {
         switch (opt)
         {
@@ -593,12 +596,18 @@ int main(int argc, char *argv[])
             action_write = 1;
             write_file_name = optarg;
             break;
+        case 'e':
+            action_erase = 1;
+            break;
         case 'b':
             action_boot = 1;
             action_reset = 1;
             break;
         case 't':
             action_reset = 1;
+            break;
+        case 'y':
+            no_confirm = 1;
             break;
         case 'h':
         case '?':
@@ -644,28 +653,7 @@ int main(int argc, char *argv[])
     printf("PCIe ID (device): %s\n", strrchr(pci_device_path, '/')+1);
     printf("PCIe ID (upstream port): %s\n", strrchr(pci_port_path, '/')+1);
 
-    uint32_t flash_format = 0;
-    const char *fpga_part = get_fpga_part(dev->fpga_id);
-
-    uint8_t flash_configuration = 0;
-    uint8_t flash_data_width = 0;
-    uint8_t flash_addr_width = 0;
-
-    printf("FPGA ID: 0x%08x\n", dev->fpga_id);
-    printf("FPGA part: %s\n", fpga_part);
-    printf("FW ID: 0x%08x\n", dev->fw_id);
-    printf("FW version: %d.%d.%d.%d\n", dev->fw_ver >> 24,
-            (dev->fw_ver >> 16) & 0xff,
-            (dev->fw_ver >> 8) & 0xff,
-            dev->fw_ver & 0xff);
-    printf("Board ID: 0x%08x\n", dev->board_id);
-    printf("Board version: %d.%d.%d.%d\n", dev->board_ver >> 24,
-            (dev->board_ver >> 16) & 0xff,
-            (dev->board_ver >> 8) & 0xff,
-            dev->board_ver & 0xff);
-    printf("Build date: %s UTC (raw 0x%08x)\n", dev->build_date_str, dev->build_date);
-    printf("Git hash: %08x\n", dev->git_hash);
-    printf("Release info: %08x\n", dev->rel_info);
+    mqnic_print_fw_id(dev);
 
     if (dev->fpga_id == 0 || dev->fpga_id == 0xffffffff)
     {
@@ -673,6 +661,14 @@ int main(int argc, char *argv[])
         ret = -1;
         goto skip_flash;
     }
+
+    uint32_t flash_format = 0;
+
+    uint8_t flash_configuration = 0;
+    uint8_t flash_data_width = 0;
+    uint8_t flash_default_segment = 0;
+    uint8_t flash_fallback_segment = 0;
+    uint32_t flash_segment0_length = 0;
 
     int bitswap = 0;
     int word_size = 8;
@@ -682,17 +678,64 @@ int main(int argc, char *argv[])
     size_t segment_size = 0;
     size_t segment_offset = 0;
 
-    if ((flash_rb = find_reg_block(dev->rb_list, MQNIC_RB_SPI_FLASH_TYPE, MQNIC_RB_SPI_FLASH_VER, 0)))
+    if ((flash_rb = mqnic_find_reg_block(dev->rb_list, MQNIC_RB_SPI_FLASH_TYPE, 0, 0)))
     {
+        uint32_t reg_val;
+
         // SPI flash
         flash_format = mqnic_reg_read32(flash_rb->regs, MQNIC_RB_SPI_FLASH_REG_FORMAT);
 
         printf("Flash type: SPI\n");
         printf("Flash format: 0x%08x\n", flash_format);
 
-        flash_configuration = flash_format >> 8;
-        flash_data_width = flash_format >> 16;
-        flash_addr_width = flash_format >> 24;
+        switch (flash_rb->version) {
+            case 0x00000100:
+                flash_configuration = (flash_format >> 8) & 0xff;
+                flash_default_segment = (flash_configuration > 1 ? 1 : 0);
+                flash_fallback_segment = 0;
+                flash_segment0_length = 0;
+
+                if (flash_configuration == 0x81)
+                {
+                    // Alveo boards
+                    flash_configuration = 2;
+                    flash_segment0_length = 0x01002000;
+                }
+                break;
+            case MQNIC_RB_SPI_FLASH_VER:
+                flash_configuration = flash_format & 0xf;
+                flash_default_segment = (flash_format >> 4) & 0xf;
+                flash_fallback_segment = (flash_format >> 8) & 0xf;
+                flash_segment0_length = flash_format & 0xfffff000;
+                break;
+            default:
+                fprintf(stderr, "Unknown SPI flash block version\n");
+                ret = -1;
+                goto skip_flash;
+        }
+
+        // determine data width
+        flash_data_width = 0;
+
+        mqnic_reg_write32(flash_rb->regs, MQNIC_RB_SPI_FLASH_REG_CTRL_0, 0x0002000f);
+        reg_val = mqnic_reg_read32(flash_rb->regs, MQNIC_RB_SPI_FLASH_REG_CTRL_0) & 0xf;
+        mqnic_reg_write32(flash_rb->regs, MQNIC_RB_SPI_FLASH_REG_CTRL_0, 0x00020000);
+
+        while (reg_val)
+        {
+            reg_val >>= 1;
+            flash_data_width++;
+        }
+
+        mqnic_reg_write32(flash_rb->regs, MQNIC_RB_SPI_FLASH_REG_CTRL_1, 0x0002000f);
+        reg_val = mqnic_reg_read32(flash_rb->regs, MQNIC_RB_SPI_FLASH_REG_CTRL_1) & 0xf;
+        mqnic_reg_write32(flash_rb->regs, MQNIC_RB_SPI_FLASH_REG_CTRL_1, 0x00020000);
+
+        while (reg_val)
+        {
+            reg_val >>= 1;
+            flash_data_width++;
+        }
 
         printf("Data width: %d\n", flash_data_width);
 
@@ -725,20 +768,50 @@ int main(int argc, char *argv[])
             flash_size = pri_flash->size;
         }
     }
-    else if ((flash_rb = find_reg_block(dev->rb_list, MQNIC_RB_BPI_FLASH_TYPE, MQNIC_RB_BPI_FLASH_VER, 0)))
+    else if ((flash_rb = mqnic_find_reg_block(dev->rb_list, MQNIC_RB_BPI_FLASH_TYPE, 0, 0)))
     {
+        uint32_t reg_val;
+
         // BPI flash
         flash_format = mqnic_reg_read32(flash_rb->regs, MQNIC_RB_BPI_FLASH_REG_FORMAT);
 
         printf("Flash type: BPI\n");
         printf("Flash format: 0x%08x\n", flash_format);
 
-        flash_configuration = flash_format >> 8;
-        flash_data_width = flash_format >> 16;
-        flash_addr_width = flash_format >> 24;
+        switch (flash_rb->version) {
+            case 0x00000100:
+                flash_configuration = (flash_format >> 8) & 0xff;
+                flash_default_segment = (flash_configuration > 1 ? 1 : 0);
+                flash_fallback_segment = 0;
+                flash_segment0_length = 0;
+                break;
+            case MQNIC_RB_BPI_FLASH_VER:
+                flash_configuration = flash_format & 0xf;
+                flash_default_segment = (flash_format >> 4) & 0xf;
+                flash_fallback_segment = (flash_format >> 8) & 0xf;
+                flash_segment0_length = flash_format & 0xfffff000;
+                break;
+            default:
+                fprintf(stderr, "Unknown BPI flash block version\n");
+                ret = -1;
+                goto skip_flash;
+        }
+
+        // determine data width
+        mqnic_reg_write32(flash_rb->regs, MQNIC_RB_BPI_FLASH_REG_CTRL, 0x0001010f);
+        mqnic_reg_write32(flash_rb->regs, MQNIC_RB_BPI_FLASH_REG_DATA, 0xffffffff);
+        reg_val = mqnic_reg_read32(flash_rb->regs, MQNIC_RB_BPI_FLASH_REG_DATA);
+        mqnic_reg_write32(flash_rb->regs, MQNIC_RB_BPI_FLASH_REG_CTRL, 0x0000000f);
+        mqnic_reg_write32(flash_rb->regs, MQNIC_RB_BPI_FLASH_REG_DATA, 0x00000000);
+
+        flash_data_width = 0;
+        while (reg_val)
+        {
+            reg_val >>= 1;
+            flash_data_width++;
+        }
 
         printf("Data width: %d\n", flash_data_width);
-        printf("Address width: %d\n", flash_addr_width);
 
         bitswap = 1;
 
@@ -777,11 +850,22 @@ int main(int argc, char *argv[])
             flash_segment_length[0] = flash_size;
             break;
         case 2:
+            if (flash_segment0_length == 0)
+            {
+                flash_segment0_length = flash_size >> 1;
+            }
+            else if (flash_size < flash_segment0_length)
+            {
+                fprintf(stderr, "Invalid flash configuration\n");
+                ret = -1;
+                goto skip_flash;
+            }
+
             flash_segment_count = 2;
             flash_segment_start[0] = 0;
-            flash_segment_length[0] = flash_size >> 1;
+            flash_segment_length[0] = flash_segment0_length;
             flash_segment_start[1] = flash_segment_start[0]+flash_segment_length[0];
-            flash_segment_length[1] = flash_size >> 1;
+            flash_segment_length[1] = flash_size-flash_segment_start[1];
             break;
         case 4:
             flash_segment_count = 4;
@@ -803,21 +887,6 @@ int main(int argc, char *argv[])
                 flash_segment_length[k] = flash_size >> 3;
             }
             break;
-        case 0x81:
-            // Alveo boards
-            if (flash_size < 0x01002000)
-            {
-                fprintf(stderr, "Invalid flash size\n");
-                ret = -1;
-                goto skip_flash;
-            }
-
-            flash_segment_count = 2;
-            flash_segment_start[0] = 0;
-            flash_segment_length[0] = 0x01002000;
-            flash_segment_start[1] = flash_segment_start[0]+flash_segment_length[0];
-            flash_segment_length[1] = flash_size - flash_segment_start[1];
-            break;
         default:
             fprintf(stderr, "Unknown flash configuration (0x%02x)\n", flash_configuration);
             ret = -1;
@@ -829,16 +898,19 @@ int main(int argc, char *argv[])
         printf("Flash segment %d: start 0x%08lx length 0x%08lx\n", k, flash_segment_start[k], flash_segment_length[k]);
     }
 
+    printf("Default segment: %d\n", flash_default_segment);
+    if (flash_fallback_segment == flash_default_segment || flash_fallback_segment >= flash_segment_count)
+    {
+        printf("Fallback segment: none\n");
+    }
+    else
+    {
+        printf("Fallback segment: %d\n", flash_fallback_segment);
+    }
+
     if (slot < 0)
     {
-        if (flash_segment_count > 1)
-        {
-            slot = 1;
-        }
-        else
-        {
-            slot = 0;
-        }
+        slot = flash_default_segment;
     }
 
     if ((action_read || action_write) && (slot < 0 || slot >= flash_segment_count))
@@ -852,6 +924,57 @@ int main(int argc, char *argv[])
     segment_size = flash_segment_length[slot];
 
     printf("Selected: segment %d start 0x%08lx length 0x%08lx\n", slot, segment_offset, segment_size);
+
+    if (action_erase)
+    {
+        if (!no_confirm)
+        {
+            char str[32];
+
+            printf("Are you sure you want to erase the selected segment?\n");
+            printf("[y/N]: ");
+
+            fgets(str, sizeof(str), stdin);
+
+            if (str[0] != 'y' && str[0] != 'Y')
+                goto err;
+        }
+
+        if (dual_qspi)
+        {
+            // Dual QSPI flash
+            printf("Erasing primary flash...\n");
+            if (flash_erase_progress(pri_flash, segment_offset/2, segment_size/2))
+            {
+                fprintf(stderr, "Erase failed!\n");
+                ret = -1;
+                goto err;
+            }
+
+            printf("Erasing secondary flash...\n");
+            if (flash_erase_progress(sec_flash, segment_offset/2, segment_size/2))
+            {
+                fprintf(stderr, "Erase failed!\n");
+                ret = -1;
+                goto err;
+            }
+
+            printf("Erase complete!\n");
+        }
+        else
+        {
+            // SPI or BPI flash
+            printf("Erasing flash...\n");
+            if (flash_erase_progress(pri_flash, segment_offset, segment_size))
+            {
+                fprintf(stderr, "Erase failed!\n");
+                ret = -1;
+                goto err;
+            }
+
+            printf("Erase complete!\n");
+        }
+    }
 
     if (action_write)
     {
@@ -914,9 +1037,9 @@ int main(int argc, char *argv[])
                 goto err;
             }
 
-            if (stristr(bf->part, fpga_part) != bf->part)
+            if (stristr(bf->part, dev->fpga_part) != bf->part)
             {
-                fprintf(stderr, "Device mismatch (target is %s, file is %s)\n", fpga_part, bf->part);
+                fprintf(stderr, "Device mismatch (target is %s, file is %s)\n", dev->fpga_part, bf->part);
                 bitfile_close(bf);
                 free(segment);
                 ret = -1;
@@ -1031,6 +1154,19 @@ int main(int argc, char *argv[])
                 len_int += pri_flash->erase_block_size - ((segment_offset/2 + len_int) & (pri_flash->erase_block_size-1));
             }
 
+            if (!no_confirm)
+            {
+                char str[32];
+
+                printf("Are you sure you want to write the selected segment?\n");
+                printf("[y/N]: ");
+
+                fgets(str, sizeof(str), stdin);
+
+                if (str[0] != 'y' && str[0] != 'Y')
+                    goto err;
+            }
+
             printf("Erasing primary flash...\n");
             if (flash_erase_progress(pri_flash, segment_offset/2, len_int))
             {
@@ -1088,6 +1224,19 @@ int main(int argc, char *argv[])
             if ((segment_offset + len) & (pri_flash->erase_block_size-1))
             {
                 len += pri_flash->erase_block_size - ((segment_offset + len) & (pri_flash->erase_block_size-1));
+            }
+
+            if (!no_confirm)
+            {
+                char str[32];
+
+                printf("Are you sure you want to write the selected segment?\n");
+                printf("[y/N]: ");
+
+                fgets(str, sizeof(str), stdin);
+
+                if (str[0] != 'y' && str[0] != 'Y')
+                    goto err;
             }
 
             printf("Erasing flash...\n");
@@ -1222,6 +1371,22 @@ skip_flash:
 
     if (action_boot || action_reset)
     {
+        if (!no_confirm)
+        {
+            char str[32];
+
+            if (action_boot)
+                printf("Are you sure you want to boot from flash?\n");
+            else
+                printf("Are you sure you want to perform a reset?\n");
+            printf("[y/N]: ");
+
+            fgets(str, sizeof(str), stdin);
+
+            if (str[0] != 'y' && str[0] != 'Y')
+                goto err;
+        }
+
         printf("Preparing to reset device...\n");
 
         // disable fatal error reporting on port (to prevent IPMI-triggered reboot)

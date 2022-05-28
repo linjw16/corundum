@@ -71,7 +71,7 @@ static int mqnic_phc_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
 	}
 
 	nom_per_fns = ioread32(mdev->phc_rb->regs + MQNIC_RB_PHC_REG_NOM_PERIOD_FNS);
-	nom_per_fns = (u64) ioread32(mdev->phc_rb->regs + MQNIC_RB_PHC_REG_NOM_PERIOD_NS) << 32;
+	nom_per_fns |= (u64) ioread32(mdev->phc_rb->regs + MQNIC_RB_PHC_REG_NOM_PERIOD_NS) << 32;
 
 	if (nom_per_fns == 0)
 		nom_per_fns = 0x4ULL << 32;
@@ -155,12 +155,12 @@ static int mqnic_phc_adjtime(struct ptp_clock_info *ptp, s64 delta)
 static int mqnic_phc_perout(struct ptp_clock_info *ptp, int on, struct ptp_perout_request *perout)
 {
 	struct mqnic_dev *mdev = container_of(ptp, struct mqnic_dev, ptp_clock_info);
-	struct reg_block *rb;
+	struct mqnic_reg_block *rb;
 
 	u64 start_sec, period_sec, width_sec;
 	u32 start_nsec, period_nsec, width_nsec;
 
-	rb = find_reg_block(mdev->rb_list, MQNIC_RB_PHC_PEROUT_TYPE,
+	rb = mqnic_find_reg_block(mdev->rb_list, MQNIC_RB_PHC_PEROUT_TYPE,
 			MQNIC_RB_PHC_PEROUT_VER, perout->index);
 
 	if (!rb)
@@ -243,10 +243,10 @@ static void mqnic_phc_set_from_system_clock(struct ptp_clock_info *ptp)
 void mqnic_register_phc(struct mqnic_dev *mdev)
 {
 	int perout_ch_count = 0;
-	struct reg_block *rb;
+	struct mqnic_reg_block *rb;
 
 	if (!mdev->phc_rb) {
-		dev_err(mdev->dev, "PTP clock not present");
+		dev_warn(mdev->dev, "PTP clock not present");
 		return;
 	}
 
@@ -255,7 +255,8 @@ void mqnic_register_phc(struct mqnic_dev *mdev)
 		return;
 	}
 
-	while ((rb = find_reg_block(mdev->rb_list, MQNIC_RB_PHC_PEROUT_TYPE,
+	// count PTP period output channels
+	while ((rb = mqnic_find_reg_block(mdev->rb_list, MQNIC_RB_PHC_PEROUT_TYPE,
 			MQNIC_RB_PHC_PEROUT_VER, perout_ch_count))) {
 		perout_ch_count++;
 	}
@@ -280,13 +281,14 @@ void mqnic_register_phc(struct mqnic_dev *mdev)
 	mdev->ptp_clock = ptp_clock_register(&mdev->ptp_clock_info, mdev->dev);
 
 	if (IS_ERR(mdev->ptp_clock)) {
+		dev_err(mdev->dev, "%s: failed to register PHC (%ld)", __func__, PTR_ERR(mdev->ptp_clock));
 		mdev->ptp_clock = NULL;
-		dev_err(mdev->dev, "%s: failed", __func__);
-	} else {
-		dev_info(mdev->dev, "registered PHC (index %d)", ptp_clock_index(mdev->ptp_clock));
-
-		mqnic_phc_set_from_system_clock(&mdev->ptp_clock_info);
+		return;
 	}
+
+	dev_info(mdev->dev, "registered PHC (index %d)", ptp_clock_index(mdev->ptp_clock));
+
+	mqnic_phc_set_from_system_clock(&mdev->ptp_clock_info);
 }
 
 void mqnic_unregister_phc(struct mqnic_dev *mdev)

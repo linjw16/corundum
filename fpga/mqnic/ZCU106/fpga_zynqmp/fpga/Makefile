@@ -13,13 +13,18 @@ SYN_FILES += rtl/common/mqnic_core.v
 SYN_FILES += rtl/common/mqnic_interface.v
 SYN_FILES += rtl/common/mqnic_interface_tx.v
 SYN_FILES += rtl/common/mqnic_interface_rx.v
+SYN_FILES += rtl/common/mqnic_port.v
+SYN_FILES += rtl/common/mqnic_port_tx.v
+SYN_FILES += rtl/common/mqnic_port_rx.v
 SYN_FILES += rtl/common/mqnic_egress.v
 SYN_FILES += rtl/common/mqnic_ingress.v
 SYN_FILES += rtl/common/mqnic_l2_egress.v
 SYN_FILES += rtl/common/mqnic_l2_ingress.v
+SYN_FILES += rtl/common/mqnic_rx_queue_map.v
 SYN_FILES += rtl/common/mqnic_ptp.v
 SYN_FILES += rtl/common/mqnic_ptp_clock.v
 SYN_FILES += rtl/common/mqnic_ptp_perout.v
+SYN_FILES += rtl/common/mqnic_port_map_phy_xgmii.v
 SYN_FILES += rtl/common/cpl_write.v
 SYN_FILES += rtl/common/cpl_op_mux.v
 SYN_FILES += rtl/common/desc_fetch.v
@@ -39,6 +44,9 @@ SYN_FILES += rtl/common/rb_drp.v
 SYN_FILES += rtl/common/eth_xcvr_phy_10g_gty_wrapper.v
 SYN_FILES += rtl/common/eth_xcvr_phy_10g_gty_quad_wrapper.v
 SYN_FILES += rtl/common/stats_counter.v
+SYN_FILES += rtl/common/stats_collect.v
+SYN_FILES += rtl/common/stats_dma_if_axi.v
+SYN_FILES += rtl/common/stats_dma_latency.v
 SYN_FILES += rtl/common/mqnic_tx_scheduler_block_rr.v
 SYN_FILES += rtl/common/tx_scheduler_rr.v
 SYN_FILES += rtl/common/tdma_scheduler.v
@@ -101,12 +109,14 @@ XDC_FILES = fpga.xdc
 XDC_FILES += lib/axis/syn/vivado/axis_async_fifo.tcl
 XDC_FILES += lib/axis/syn/vivado/sync_reset.tcl
 XDC_FILES += lib/eth/syn/vivado/ptp_clock_cdc.tcl
+XDC_FILES += ../../../common/syn/vivado/mqnic_port.tcl
+XDC_FILES += ../../../common/syn/vivado/mqnic_ptp_clock.tcl
 XDC_FILES += ../../../common/syn/vivado/rb_drp.tcl
 XDC_FILES += ../../../common/syn/vivado/eth_xcvr_phy_10g_gty_wrapper.tcl
 XDC_FILES += ../../../common/syn/vivado/tdma_ber_ch.tcl
 
 # IP
-IP_TCL_FILES = ip/bd_zynq.tcl
+IP_TCL_FILES = ip/zynq_ps.tcl
 IP_TCL_FILES += ip/eth_xcvr_gth.tcl
 
 # Configuration

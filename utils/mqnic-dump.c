@@ -35,7 +35,7 @@ either expressed or implied, of The Regents of the University of California.
 #include <stdlib.h>
 #include <string.h>
 
-#include "mqnic.h"
+#include <mqnic/mqnic.h>
 
 static void usage(char *name)
 {
@@ -114,24 +114,11 @@ int main(int argc, char *argv[])
         printf("RAM region size: %lu\n", dev->ram_size);
 
     printf("Device-level register blocks:\n");
-    for (struct reg_block *rb = dev->rb_list; rb->type && rb->version; rb++)
-        printf(" type 0x%08x (v %d.%d.%d.%d)\n", rb->type, rb->version >> 24, 
+    for (struct mqnic_reg_block *rb = dev->rb_list; rb->regs; rb++)
+        printf(" type 0x%08x (v %d.%d.%d.%d)\n", rb->type, rb->version >> 24,
                 (rb->version >> 16) & 0xff, (rb->version >> 8) & 0xff, rb->version & 0xff);
 
-    printf("FPGA ID: 0x%08x\n", dev->fpga_id);
-    printf("FW ID: 0x%08x\n", dev->fw_id);
-    printf("FW version: %d.%d.%d.%d\n", dev->fw_ver >> 24,
-            (dev->fw_ver >> 16) & 0xff,
-            (dev->fw_ver >> 8) & 0xff,
-            dev->fw_ver & 0xff);
-    printf("Board ID: 0x%08x\n", dev->board_id);
-    printf("Board version: %d.%d.%d.%d\n", dev->board_ver >> 24,
-            (dev->board_ver >> 16) & 0xff,
-            (dev->board_ver >> 8) & 0xff,
-            dev->board_ver & 0xff);
-    printf("Build date: %s UTC (raw 0x%08x)\n", dev->build_date_str, dev->build_date);
-    printf("Git hash: %08x\n", dev->git_hash);
-    printf("Release info: %08x\n", dev->rel_info);
+    mqnic_print_fw_id(dev);
 
     printf("IF offset: 0x%08x\n", dev->if_offset);
     printf("IF count: %d\n", dev->if_count);
@@ -141,17 +128,23 @@ int main(int argc, char *argv[])
     if (dev->phc_rb)
     {
         int ch;
+        uint32_t ns;
+        uint32_t fns;
 
         printf("PHC time: %ld.%09d s\n", mqnic_reg_read32(dev->phc_rb->regs, MQNIC_RB_PHC_REG_CUR_SEC_L) +
                 (((int64_t)mqnic_reg_read32(dev->phc_rb->regs, MQNIC_RB_PHC_REG_CUR_SEC_H)) << 32),
                 mqnic_reg_read32(dev->phc_rb->regs, MQNIC_RB_PHC_REG_CUR_NS));
-        printf("PHC period:     %d ns 0x%08x fns\n", mqnic_reg_read32(dev->phc_rb->regs, MQNIC_RB_PHC_REG_PERIOD_NS),
-                mqnic_reg_read32(dev->phc_rb->regs, MQNIC_RB_PHC_REG_PERIOD_FNS));
-        printf("PHC nom period: %d ns 0x%08x fns\n", mqnic_reg_read32(dev->phc_rb->regs, MQNIC_RB_PHC_REG_NOM_PERIOD_NS),
-                mqnic_reg_read32(dev->phc_rb->regs, MQNIC_RB_PHC_REG_NOM_PERIOD_FNS));
+
+        ns = mqnic_reg_read32(dev->phc_rb->regs, MQNIC_RB_PHC_REG_PERIOD_NS);
+        fns = mqnic_reg_read32(dev->phc_rb->regs, MQNIC_RB_PHC_REG_PERIOD_FNS);
+        printf("PHC period:     %d.%09ld ns (raw 0x%x ns 0x%08x fns)\n", ns, ((uint64_t)fns * 1000000000) >> 32, ns, fns);
+
+        ns = mqnic_reg_read32(dev->phc_rb->regs, MQNIC_RB_PHC_REG_NOM_PERIOD_NS);
+        fns = mqnic_reg_read32(dev->phc_rb->regs, MQNIC_RB_PHC_REG_NOM_PERIOD_FNS);
+        printf("PHC nom period: %d.%09ld ns (raw 0x%x ns 0x%08x fns)\n", ns, ((uint64_t)fns * 1000000000) >> 32, ns, fns);
 
         ch = 0;
-        for (struct reg_block *rb = dev->rb_list; rb->type && rb->version; rb++)
+        for (struct mqnic_reg_block *rb = dev->rb_list; rb->regs; rb++)
         {
             if (rb->type == MQNIC_RB_PHC_PEROUT_TYPE && rb->version == MQNIC_RB_PHC_PEROUT_VER)
             {
@@ -187,8 +180,8 @@ int main(int argc, char *argv[])
     }
 
     printf("Interface-level register blocks:\n");
-    for (struct reg_block *rb = dev_interface->rb_list; rb->type && rb->version; rb++)
-        printf(" type 0x%08x (v %d.%d.%d.%d)\n", rb->type, rb->version >> 24, 
+    for (struct mqnic_reg_block *rb = dev_interface->rb_list; rb->regs; rb++)
+        printf(" type 0x%08x (v %d.%d.%d.%d)\n", rb->type, rb->version >> 24,
                 (rb->version >> 16) & 0xff, (rb->version >> 8) & 0xff, rb->version & 0xff);
 
     printf("IF features: 0x%08x\n", dev_interface->if_features);
@@ -196,9 +189,8 @@ int main(int argc, char *argv[])
     printf("Scheduler block count: %d\n", dev_interface->sched_block_count);
     printf("Max TX MTU: %d\n", dev_interface->max_tx_mtu);
     printf("Max RX MTU: %d\n", dev_interface->max_rx_mtu);
-    printf("TX MTU: %d\n", mqnic_reg_read32(dev_interface->if_ctrl_rb->regs, MQNIC_RB_IF_CTRL_REG_TX_MTU));
-    printf("RX MTU: %d\n", mqnic_reg_read32(dev_interface->if_ctrl_rb->regs, MQNIC_RB_IF_CTRL_REG_RX_MTU));
-    printf("RSS mask: 0x%08x\n", mqnic_reg_read32(dev_interface->if_ctrl_rb->regs, MQNIC_RB_IF_CTRL_REG_RSS_MASK));
+    printf("TX MTU: %d\n", mqnic_interface_get_tx_mtu(dev_interface));
+    printf("RX MTU: %d\n", mqnic_interface_get_rx_mtu(dev_interface));
 
     printf("Event queue offset: 0x%08x\n", dev_interface->event_queue_offset);
     printf("Event queue count: %d\n", dev_interface->event_queue_count);
@@ -220,12 +212,37 @@ int main(int argc, char *argv[])
     printf("RX completion queue count: %d\n", dev_interface->rx_cpl_queue_count);
     printf("RX completion queue stride: 0x%08x\n", dev_interface->rx_cpl_queue_stride);
 
+    for (int k = 0; k < dev_interface->port_count; k++)
+    {
+        printf("Port %d RX queue map offset: %d\n", k, mqnic_interface_get_rx_queue_map_offset(dev_interface, k));
+        printf("Port %d RX queue map RSS mask: 0x%08x\n", k, mqnic_interface_get_rx_queue_map_rss_mask(dev_interface, k));
+        printf("Port %d RX queue map app mask: 0x%08x\n", k, mqnic_interface_get_rx_queue_map_app_mask(dev_interface, k));
+    }
+
     if (port < 0 || port >= dev_interface->port_count)
     {
         fprintf(stderr, "Port out of range\n");
         ret = -1;
         goto err;
     }
+
+    struct mqnic_port *dev_port = dev_interface->ports[port];
+
+    if (!dev_port)
+    {
+        fprintf(stderr, "Invalid port\n");
+        ret = -1;
+        goto err;
+    }
+
+    printf("Port-level register blocks:\n");
+    for (struct mqnic_reg_block *rb = dev_port->rb_list; rb->regs; rb++)
+        printf(" type 0x%08x (v %d.%d.%d.%d)\n", rb->type, rb->version >> 24,
+                (rb->version >> 16) & 0xff, (rb->version >> 8) & 0xff, rb->version & 0xff);
+
+    printf("Port features: 0x%08x\n", dev_port->port_features);
+    printf("Port TX status: 0x%08x\n", mqnic_port_get_tx_status(dev_port));
+    printf("Port RX status: 0x%08x\n", mqnic_port_get_rx_status(dev_port));
 
     sched_block = port;
 
@@ -246,13 +263,13 @@ int main(int argc, char *argv[])
     }
 
     printf("Scheduler block-level register blocks:\n");
-    for (struct reg_block *rb = dev_sched_block->rb_list; rb->type && rb->version; rb++)
-        printf(" type 0x%08x (v %d.%d.%d.%d)\n", rb->type, rb->version >> 24, 
+    for (struct mqnic_reg_block *rb = dev_sched_block->rb_list; rb->regs; rb++)
+        printf(" type 0x%08x (v %d.%d.%d.%d)\n", rb->type, rb->version >> 24,
                 (rb->version >> 16) & 0xff, (rb->version >> 8) & 0xff, rb->version & 0xff);
 
     printf("Sched count: %d\n", dev_sched_block->sched_count);
 
-    for (struct reg_block *rb = dev_sched_block->rb_list; rb->type && rb->version; rb++)
+    for (struct mqnic_reg_block *rb = dev_sched_block->rb_list; rb->regs; rb++)
     {
         if (rb->type == MQNIC_RB_SCHED_RR_TYPE && rb->version == MQNIC_RB_SCHED_RR_VER)
         {

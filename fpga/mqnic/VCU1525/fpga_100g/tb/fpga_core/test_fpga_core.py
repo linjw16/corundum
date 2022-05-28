@@ -268,6 +268,10 @@ class TB(object):
         if hasattr(dut.core_inst.core_pcie_inst, 'pcie_app_ctrl'):
             self.dev.functions[0].configure_bar(2, 2**len(dut.core_inst.core_pcie_inst.axil_app_ctrl_araddr), ext=True, prefetch=True)
 
+        cocotb.start_soon(Clock(dut.ptp_clk, 6.206, units="ns").start())
+        dut.ptp_rst.setimmediatevalue(0)
+        cocotb.start_soon(Clock(dut.ptp_sample_clk, 8, units="ns").start())
+
         # Ethernet
         cocotb.start_soon(Clock(dut.qsfp0_rx_clk, 3.102, units="ns").start())
         cocotb.start_soon(Clock(dut.qsfp0_tx_clk, 3.102, units="ns").start())
@@ -305,6 +309,9 @@ class TB(object):
             ifg=12, speed=100e9
         )
 
+        dut.qsfp0_rx_status.setimmediatevalue(1)
+        dut.qsfp1_rx_status.setimmediatevalue(1)
+
         dut.sw.setimmediatevalue(0)
 
         dut.i2c_scl_i.setimmediatevalue(1)
@@ -323,6 +330,7 @@ class TB(object):
 
     async def init(self):
 
+        self.dut.ptp_rst.setimmediatevalue(0)
         self.dut.qsfp0_rx_rst.setimmediatevalue(0)
         self.dut.qsfp0_tx_rst.setimmediatevalue(0)
         self.dut.qsfp1_rx_rst.setimmediatevalue(0)
@@ -331,6 +339,7 @@ class TB(object):
         await RisingEdge(self.dut.clk_250mhz)
         await RisingEdge(self.dut.clk_250mhz)
 
+        self.dut.ptp_rst.setimmediatevalue(1)
         self.dut.qsfp0_rx_rst.setimmediatevalue(1)
         self.dut.qsfp0_tx_rst.setimmediatevalue(1)
         self.dut.qsfp1_rx_rst.setimmediatevalue(1)
@@ -342,6 +351,7 @@ class TB(object):
         await RisingEdge(self.dut.clk_250mhz)
         await RisingEdge(self.dut.clk_250mhz)
 
+        self.dut.ptp_rst.setimmediatevalue(0)
         self.dut.qsfp0_rx_rst.setimmediatevalue(0)
         self.dut.qsfp0_tx_rst.setimmediatevalue(0)
         self.dut.qsfp1_rx_rst.setimmediatevalue(0)
@@ -434,6 +444,61 @@ async def run_test_nic(dut):
     assert pkt.rx_checksum == ~scapy.utils.checksum(bytes(pkt.data[14:])) & 0xffff
     assert Ether(pkt.data).build() == test_pkt.build()
 
+    tb.log.info("Queue mapping offset test")
+
+    data = bytearray([x % 256 for x in range(1024)])
+
+    tb.loopback_enable = True
+
+    for k in range(4):
+        await tb.driver.interfaces[0].set_rx_queue_map_offset(0, k)
+
+        await tb.driver.interfaces[0].start_xmit(data, 0)
+
+        pkt = await tb.driver.interfaces[0].recv()
+
+        tb.log.info("Packet: %s", pkt)
+        assert pkt.rx_checksum == ~scapy.utils.checksum(bytes(pkt.data[14:])) & 0xffff
+        assert pkt.queue == k
+
+    tb.loopback_enable = False
+
+    await tb.driver.interfaces[0].set_rx_queue_map_offset(0, 0)
+
+    tb.log.info("Queue mapping RSS mask test")
+
+    await tb.driver.interfaces[0].set_rx_queue_map_rss_mask(0, 0x00000003)
+
+    tb.loopback_enable = True
+
+    queues = set()
+
+    for k in range(64):
+        payload = bytes([x % 256 for x in range(256)])
+        eth = Ether(src='5A:51:52:53:54:55', dst='DA:D1:D2:D3:D4:D5')
+        ip = IP(src='192.168.1.100', dst='192.168.1.101')
+        udp = UDP(sport=1, dport=k+0)
+        test_pkt = eth / ip / udp / payload
+
+        test_pkt2 = test_pkt.copy()
+        test_pkt2[UDP].chksum = scapy.utils.checksum(bytes(test_pkt2[UDP]))
+
+        await tb.driver.interfaces[0].start_xmit(test_pkt2.build(), 0, 34, 6)
+
+    for k in range(64):
+        pkt = await tb.driver.interfaces[0].recv()
+
+        tb.log.info("Packet: %s", pkt)
+        assert pkt.rx_checksum == ~scapy.utils.checksum(bytes(pkt.data[14:])) & 0xffff
+
+        queues.add(pkt.queue)
+
+    assert len(queues) == 4
+
+    tb.loopback_enable = False
+
+    await tb.driver.interfaces[0].set_rx_queue_map_rss_mask(0, 0)
+
     tb.log.info("Multiple small packets")
 
     count = 64
@@ -523,13 +588,18 @@ def test_fpga_core(request):
         os.path.join(rtl_dir, "common", "mqnic_interface.v"),
         os.path.join(rtl_dir, "common", "mqnic_interface_tx.v"),
         os.path.join(rtl_dir, "common", "mqnic_interface_rx.v"),
+        os.path.join(rtl_dir, "common", "mqnic_port.v"),
+        os.path.join(rtl_dir, "common", "mqnic_port_tx.v"),
+        os.path.join(rtl_dir, "common", "mqnic_port_rx.v"),
         os.path.join(rtl_dir, "common", "mqnic_egress.v"),
         os.path.join(rtl_dir, "common", "mqnic_ingress.v"),
         os.path.join(rtl_dir, "common", "mqnic_l2_egress.v"),
         os.path.join(rtl_dir, "common", "mqnic_l2_ingress.v"),
+        os.path.join(rtl_dir, "common", "mqnic_rx_queue_map.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp_clock.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp_perout.v"),
+        os.path.join(rtl_dir, "common", "mqnic_port_map_mac_axis.v"),
         os.path.join(rtl_dir, "common", "cpl_write.v"),
         os.path.join(rtl_dir, "common", "cpl_op_mux.v"),
         os.path.join(rtl_dir, "common", "desc_fetch.v"),
@@ -609,16 +679,20 @@ def test_fpga_core(request):
     parameters['IF_COUNT'] = 2
     parameters['PORTS_PER_IF'] = 1
     parameters['SCHED_PER_IF'] = parameters['PORTS_PER_IF']
+    parameters['PORT_MASK'] = 0
 
     # PTP configuration
+    parameters['PTP_CLK_PERIOD_NS_NUM'] = 1024
+    parameters['PTP_CLK_PERIOD_NS_DENOM'] = 165
     parameters['PTP_CLOCK_PIPELINE'] = 0
-    parameters['PTP_USE_SAMPLE_CLOCK'] = 0
+    parameters['PTP_CLOCK_CDC_PIPELINE'] = 0
+    parameters['PTP_USE_SAMPLE_CLOCK'] = 1
     parameters['PTP_SEPARATE_RX_CLOCK'] = 0
     parameters['PTP_PORT_CDC_PIPELINE'] = 0
     parameters['PTP_PEROUT_ENABLE'] = 0
     parameters['PTP_PEROUT_COUNT'] = 1
 
-    # Queue manager configuration (interface)
+    # Queue manager configuration
     parameters['EVENT_QUEUE_OP_TABLE_SIZE'] = 32
     parameters['TX_QUEUE_OP_TABLE_SIZE'] = 32
     parameters['RX_QUEUE_OP_TABLE_SIZE'] = 32
@@ -635,21 +709,18 @@ def test_fpga_core(request):
     parameters['TX_CPL_QUEUE_PIPELINE'] = parameters['TX_QUEUE_PIPELINE']
     parameters['RX_CPL_QUEUE_PIPELINE'] = parameters['RX_QUEUE_PIPELINE']
 
-    # TX and RX engine configuration (port)
+    # TX and RX engine configuration
     parameters['TX_DESC_TABLE_SIZE'] = 32
     parameters['RX_DESC_TABLE_SIZE'] = 32
 
-    # Scheduler configuration (port)
+    # Scheduler configuration
     parameters['TX_SCHEDULER_OP_TABLE_SIZE'] = parameters['TX_DESC_TABLE_SIZE']
     parameters['TX_SCHEDULER_PIPELINE'] = parameters['TX_QUEUE_PIPELINE']
     parameters['TDMA_INDEX_WIDTH'] = 6
 
-    # Timestamping configuration (port)
+    # Interface configuration
     parameters['PTP_TS_ENABLE'] = 1
-    parameters['TX_PTP_TS_FIFO_DEPTH'] = 32
-    parameters['RX_PTP_TS_FIFO_DEPTH'] = 32
-
-    # Interface configuration (port)
+    parameters['TX_CPL_FIFO_DEPTH'] = 32
     parameters['TX_CHECKSUM_ENABLE'] = 1
     parameters['RX_RSS_ENABLE'] = 1
     parameters['RX_HASH_ENABLE'] = 1
@@ -662,6 +733,7 @@ def test_fpga_core(request):
     parameters['RX_RAM_SIZE'] = 131072
 
     # Application block configuration
+    parameters['APP_ID'] = 0x00000000
     parameters['APP_ENABLE'] = 0
     parameters['APP_CTRL_ENABLE'] = 1
     parameters['APP_DMA_ENABLE'] = 1
@@ -671,6 +743,8 @@ def test_fpga_core(request):
     parameters['APP_STAT_ENABLE'] = 1
 
     # DMA interface configuration
+    parameters['DMA_IMM_ENABLE'] = 0
+    parameters['DMA_IMM_WIDTH'] = 32
     parameters['DMA_LEN_WIDTH'] = 16
     parameters['DMA_TAG_WIDTH'] = 16
     parameters['RAM_ADDR_WIDTH'] = (max(parameters['TX_RAM_SIZE'], parameters['RX_RAM_SIZE'])-1).bit_length()

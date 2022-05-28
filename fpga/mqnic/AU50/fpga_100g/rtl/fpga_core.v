@@ -56,23 +56,21 @@ module fpga_core #
     parameter IF_COUNT = 1,
     parameter PORTS_PER_IF = 1,
     parameter SCHED_PER_IF = PORTS_PER_IF,
+    parameter PORT_MASK = 0,
 
     // PTP configuration
+    parameter PTP_CLK_PERIOD_NS_NUM = 1024,
+    parameter PTP_CLK_PERIOD_NS_DENOM = 165,
     parameter PTP_TS_WIDTH = 96,
-    parameter PTP_TAG_WIDTH = 16,
-    parameter PTP_PERIOD_NS_WIDTH = 4,
-    parameter PTP_OFFSET_NS_WIDTH = 32,
-    parameter PTP_FNS_WIDTH = 32,
-    parameter PTP_PERIOD_NS = 4'd4,
-    parameter PTP_PERIOD_FNS = 32'd0,
     parameter PTP_CLOCK_PIPELINE = 1,
-    parameter PTP_USE_SAMPLE_CLOCK = 0,
+    parameter PTP_CLOCK_CDC_PIPELINE = 0,
+    parameter PTP_USE_SAMPLE_CLOCK = 1,
     parameter PTP_SEPARATE_RX_CLOCK = 0,
     parameter PTP_PORT_CDC_PIPELINE = 1,
     parameter PTP_PEROUT_ENABLE = 0,
     parameter PTP_PEROUT_COUNT = 1,
 
-    // Queue manager configuration (interface)
+    // Queue manager configuration
     parameter EVENT_QUEUE_OP_TABLE_SIZE = 32,
     parameter TX_QUEUE_OP_TABLE_SIZE = 32,
     parameter RX_QUEUE_OP_TABLE_SIZE = 32,
@@ -89,21 +87,19 @@ module fpga_core #
     parameter TX_CPL_QUEUE_PIPELINE = TX_QUEUE_PIPELINE,
     parameter RX_CPL_QUEUE_PIPELINE = RX_QUEUE_PIPELINE,
 
-    // TX and RX engine configuration (port)
+    // TX and RX engine configuration
     parameter TX_DESC_TABLE_SIZE = 32,
     parameter RX_DESC_TABLE_SIZE = 32,
 
-    // Scheduler configuration (port)
+    // Scheduler configuration
     parameter TX_SCHEDULER_OP_TABLE_SIZE = TX_DESC_TABLE_SIZE,
     parameter TX_SCHEDULER_PIPELINE = TX_QUEUE_PIPELINE,
     parameter TDMA_INDEX_WIDTH = 6,
 
-    // Timestamping configuration (port)
+    // Interface configuration
     parameter PTP_TS_ENABLE = 1,
-    parameter TX_PTP_TS_FIFO_DEPTH = 32,
-    parameter RX_PTP_TS_FIFO_DEPTH = 32,
-
-    // Interface configuration (port)
+    parameter TX_CPL_FIFO_DEPTH = 32,
+    parameter TX_TAG_WIDTH = 16,
     parameter TX_CHECKSUM_ENABLE = 1,
     parameter RX_RSS_ENABLE = 1,
     parameter RX_HASH_ENABLE = 1,
@@ -116,6 +112,7 @@ module fpga_core #
     parameter RX_RAM_SIZE = 131072,
 
     // Application block configuration
+    parameter APP_ID = 32'h00000000,
     parameter APP_ENABLE = 0,
     parameter APP_CTRL_ENABLE = 1,
     parameter APP_DMA_ENABLE = 1,
@@ -125,6 +122,8 @@ module fpga_core #
     parameter APP_STAT_ENABLE = 1,
 
     // DMA interface configuration
+    parameter DMA_IMM_ENABLE = 0,
+    parameter DMA_IMM_WIDTH = 32,
     parameter DMA_LEN_WIDTH = 16,
     parameter DMA_TAG_WIDTH = 16,
     parameter RAM_ADDR_WIDTH = $clog2(TX_RAM_SIZE > RX_RAM_SIZE ? TX_RAM_SIZE : RX_RAM_SIZE),
@@ -161,7 +160,7 @@ module fpga_core #
     parameter AXIS_ETH_DATA_WIDTH = 512,
     parameter AXIS_ETH_KEEP_WIDTH = AXIS_ETH_DATA_WIDTH/8,
     parameter AXIS_ETH_SYNC_DATA_WIDTH = AXIS_ETH_DATA_WIDTH,
-    parameter AXIS_ETH_TX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TAG_WIDTH : 0) + 1,
+    parameter AXIS_ETH_TX_USER_WIDTH = TX_TAG_WIDTH + 1,
     parameter AXIS_ETH_RX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TS_WIDTH : 0) + 1,
     parameter AXIS_ETH_TX_PIPELINE = 4,
     parameter AXIS_ETH_TX_FIFO_PIPELINE = 4,
@@ -183,6 +182,13 @@ module fpga_core #
      */
     input  wire                               clk_250mhz,
     input  wire                               rst_250mhz,
+
+    /*
+     * PTP clock
+     */
+    input  wire                               ptp_clk,
+    input  wire                               ptp_rst,
+    input  wire                               ptp_sample_clk,
 
     /*
      * GPIO
@@ -301,6 +307,8 @@ module fpga_core #
     input  wire                               qsfp_rx_ptp_rst,
     output wire [79:0]                        qsfp_rx_ptp_time,
 
+    input  wire                               qsfp_rx_status,
+
     /*
      * QSPI flash
      */
@@ -359,6 +367,9 @@ end
 wire [PTP_TS_WIDTH-1:0]     ptp_ts_96;
 wire                        ptp_ts_step;
 wire                        ptp_pps;
+wire [PTP_TS_WIDTH-1:0]     ptp_sync_ts_96;
+wire                        ptp_sync_ts_step;
+wire                        ptp_sync_pps;
 
 wire [PTP_PEROUT_COUNT-1:0] ptp_perout_locked;
 wire [PTP_PEROUT_COUNT-1:0] ptp_perout_error;
@@ -485,14 +496,14 @@ always @(posedge clk_250mhz) begin
         case ({ctrl_reg_rd_addr >> 2, 2'b00})
             // QSPI flash
             RBB+8'h00: ctrl_reg_rd_data_reg <= 32'h0000C120;             // SPI flash ctrl: Type
-            RBB+8'h04: ctrl_reg_rd_data_reg <= 32'h00000100;             // SPI flash ctrl: Version
+            RBB+8'h04: ctrl_reg_rd_data_reg <= 32'h00000200;             // SPI flash ctrl: Version
             RBB+8'h08: ctrl_reg_rd_data_reg <= RB_BASE_ADDR+8'h20;       // SPI flash ctrl: Next header
             RBB+8'h0C: begin
                 // SPI flash ctrl: format
-                ctrl_reg_rd_data_reg[7:0]   <= 0;     // type (SPI)
-                ctrl_reg_rd_data_reg[15:8]  <= 8'h81; // configuration (Alveo)
-                ctrl_reg_rd_data_reg[23:16] <= 4;     // data width (QSPI)
-                ctrl_reg_rd_data_reg[31:24] <= 0;     // address width (N/A for SPI)
+                ctrl_reg_rd_data_reg[3:0]   <= 2;                   // configuration (two segments)
+                ctrl_reg_rd_data_reg[7:4]   <= 1;                   // default segment
+                ctrl_reg_rd_data_reg[11:8]  <= 0;                   // fallback segment
+                ctrl_reg_rd_data_reg[31:12] <= 32'h01002000 >> 12;  // first segment size (Alveo default)
             end
             RBB+8'h10: begin
                 // SPI flash ctrl: control 0
@@ -531,9 +542,9 @@ end
 reg [26:0] pps_led_counter_reg = 0;
 reg pps_led_reg = 0;
 
-always @(posedge clk_250mhz) begin
+always @(posedge ptp_clk) begin
     if (ptp_pps) begin
-        pps_led_counter_reg <= 125000000;
+        pps_led_counter_reg <= 80566406;
     end else if (pps_led_counter_reg > 0) begin
         pps_led_counter_reg <= pps_led_counter_reg - 1;
     end
@@ -559,9 +570,11 @@ wire [PORT_COUNT-1:0]                         axis_eth_tx_tlast;
 wire [PORT_COUNT*AXIS_ETH_TX_USER_WIDTH-1:0]  axis_eth_tx_tuser;
 
 wire [PORT_COUNT*PTP_TS_WIDTH-1:0]            axis_eth_tx_ptp_ts;
-wire [PORT_COUNT*PTP_TAG_WIDTH-1:0]           axis_eth_tx_ptp_ts_tag;
+wire [PORT_COUNT*TX_TAG_WIDTH-1:0]            axis_eth_tx_ptp_ts_tag;
 wire [PORT_COUNT-1:0]                         axis_eth_tx_ptp_ts_valid;
 wire [PORT_COUNT-1:0]                         axis_eth_tx_ptp_ts_ready;
+
+wire [PORT_COUNT-1:0]                         eth_tx_status;
 
 wire [PORT_COUNT-1:0]                         eth_rx_clk;
 wire [PORT_COUNT-1:0]                         eth_rx_rst;
@@ -578,54 +591,108 @@ wire [PORT_COUNT-1:0]                         axis_eth_rx_tready;
 wire [PORT_COUNT-1:0]                         axis_eth_rx_tlast;
 wire [PORT_COUNT*AXIS_ETH_RX_USER_WIDTH-1:0]  axis_eth_rx_tuser;
 
-//  counts    QSFP
-// IF  PORT   1234
-// 1   1      0 (0.0)
+wire [PORT_COUNT-1:0]                         eth_rx_status;
 
-localparam QSFP_IND = 0;
+wire [PTP_TS_WIDTH-1:0] qsfp_tx_ptp_time_int;
+wire [PTP_TS_WIDTH-1:0] qsfp_rx_ptp_time_int;
 
-generate
-    genvar n;
+assign qsfp_tx_ptp_time = qsfp_tx_ptp_time_int >> 16;
+assign qsfp_rx_ptp_time = qsfp_rx_ptp_time_int >> 16;
 
-    if (QSFP_IND >= 0 && QSFP_IND < PORT_COUNT) begin : qsfp
-        assign eth_tx_clk[QSFP_IND] = qsfp_tx_clk;
-        assign eth_tx_rst[QSFP_IND] = qsfp_tx_rst;
+mqnic_port_map_mac_axis #(
+    .MAC_COUNT(1),
+    .PORT_MASK(PORT_MASK),
+    .PORT_GROUP_SIZE(1),
 
-        assign qsfp_tx_axis_tdata = axis_eth_tx_tdata[QSFP_IND*AXIS_ETH_DATA_WIDTH +: AXIS_ETH_DATA_WIDTH];
-        assign qsfp_tx_axis_tkeep = axis_eth_tx_tkeep[QSFP_IND*AXIS_ETH_KEEP_WIDTH +: AXIS_ETH_KEEP_WIDTH];
-        assign qsfp_tx_axis_tvalid = axis_eth_tx_tvalid[QSFP_IND];
-        assign axis_eth_tx_tready[QSFP_IND] = qsfp_tx_axis_tready;
-        assign qsfp_tx_axis_tlast = axis_eth_tx_tlast[QSFP_IND];
-        assign qsfp_tx_axis_tuser = axis_eth_tx_tuser[QSFP_IND*AXIS_ETH_TX_USER_WIDTH +: AXIS_ETH_TX_USER_WIDTH];
+    .IF_COUNT(IF_COUNT),
+    .PORTS_PER_IF(PORTS_PER_IF),
 
-        assign axis_eth_tx_ptp_ts[QSFP_IND*PTP_TS_WIDTH +: PTP_TS_WIDTH] = {qsfp_tx_ptp_ts, 16'd0};
-        assign axis_eth_tx_ptp_ts_tag[QSFP_IND*PTP_TAG_WIDTH +: PTP_TAG_WIDTH] = qsfp_tx_ptp_ts_tag;
-        assign axis_eth_tx_ptp_ts_valid[QSFP_IND] = qsfp_tx_ptp_ts_valid;
+    .PORT_COUNT(PORT_COUNT),
 
-        assign eth_rx_clk[QSFP_IND] = qsfp_rx_clk;
-        assign eth_rx_rst[QSFP_IND] = qsfp_rx_rst;
+    .PTP_TS_WIDTH(PTP_TS_WIDTH),
+    .PTP_TAG_WIDTH(TX_TAG_WIDTH),
+    .AXIS_DATA_WIDTH(AXIS_ETH_DATA_WIDTH),
+    .AXIS_KEEP_WIDTH(AXIS_ETH_KEEP_WIDTH),
+    .AXIS_TX_USER_WIDTH(AXIS_ETH_TX_USER_WIDTH),
+    .AXIS_RX_USER_WIDTH(AXIS_ETH_RX_USER_WIDTH)
+)
+mqnic_port_map_mac_axis_inst (
+    // towards MAC
+    .mac_tx_clk({qsfp_tx_clk}),
+    .mac_tx_rst({qsfp_tx_rst}),
 
-        assign axis_eth_rx_tdata[QSFP_IND*AXIS_ETH_DATA_WIDTH +: AXIS_ETH_DATA_WIDTH] = qsfp_rx_axis_tdata;
-        assign axis_eth_rx_tkeep[QSFP_IND*AXIS_ETH_KEEP_WIDTH +: AXIS_ETH_KEEP_WIDTH] = qsfp_rx_axis_tkeep;
-        assign axis_eth_rx_tvalid[QSFP_IND] = qsfp_rx_axis_tvalid;
-        assign axis_eth_rx_tlast[QSFP_IND] = qsfp_rx_axis_tlast;
-        assign axis_eth_rx_tuser[QSFP_IND*AXIS_ETH_RX_USER_WIDTH +: AXIS_ETH_RX_USER_WIDTH] = {qsfp_rx_axis_tuser[80:1], 16'd0, qsfp_rx_axis_tuser[0]};
+    .mac_tx_ptp_ts_96({qsfp_tx_ptp_time_int}),
+    .mac_tx_ptp_ts_step(),
 
-        assign eth_rx_ptp_clk[QSFP_IND] = qsfp_rx_ptp_clk;
-        assign eth_rx_ptp_rst[QSFP_IND] = qsfp_rx_ptp_rst;
-        assign qsfp_tx_ptp_time = eth_tx_ptp_ts_96[QSFP_IND*PTP_TS_WIDTH+16 +: 80];
-        assign qsfp_rx_ptp_time = eth_rx_ptp_ts_96[QSFP_IND*PTP_TS_WIDTH+16 +: 80];
-    end else begin
-        assign qsfp_tx_axis_tdata = {AXIS_ETH_DATA_WIDTH{1'b0}};
-        assign qsfp_tx_axis_tkeep = {AXIS_ETH_KEEP_WIDTH{1'b0}};
-        assign qsfp_tx_axis_tvalid = 1'b0;
-        assign qsfp_tx_axis_tlast = 1'b0;
-        assign qsfp_tx_axis_tuser = 1'b0;
-        assign qsfp_tx_ptp_time = 80'd0;
-        assign qsfp_rx_ptp_time = 80'd0;
-    end
+    .m_axis_mac_tx_tdata({qsfp_tx_axis_tdata}),
+    .m_axis_mac_tx_tkeep({qsfp_tx_axis_tkeep}),
+    .m_axis_mac_tx_tvalid({qsfp_tx_axis_tvalid}),
+    .m_axis_mac_tx_tready({qsfp_tx_axis_tready}),
+    .m_axis_mac_tx_tlast({qsfp_tx_axis_tlast}),
+    .m_axis_mac_tx_tuser({qsfp_tx_axis_tuser}),
 
-endgenerate
+    .s_axis_mac_tx_ptp_ts({{qsfp_tx_ptp_ts, 16'd0}}),
+    .s_axis_mac_tx_ptp_ts_tag({qsfp_tx_ptp_ts_tag}),
+    .s_axis_mac_tx_ptp_ts_valid({qsfp_tx_ptp_ts_valid}),
+    .s_axis_mac_tx_ptp_ts_ready(),
+
+    .mac_tx_status(1'b1),
+
+    .mac_rx_clk({qsfp_rx_clk}),
+    .mac_rx_rst({qsfp_rx_rst}),
+
+    .mac_rx_ptp_clk({qsfp_rx_ptp_clk}),
+    .mac_rx_ptp_rst({qsfp_rx_ptp_rst}),
+    .mac_rx_ptp_ts_96({qsfp_rx_ptp_time_int}),
+    .mac_rx_ptp_ts_step(),
+
+    .s_axis_mac_rx_tdata({qsfp_rx_axis_tdata}),
+    .s_axis_mac_rx_tkeep({qsfp_rx_axis_tkeep}),
+    .s_axis_mac_rx_tvalid({qsfp_rx_axis_tvalid}),
+    .s_axis_mac_rx_tready(),
+    .s_axis_mac_rx_tlast({qsfp_rx_axis_tlast}),
+    .s_axis_mac_rx_tuser({{qsfp_rx_axis_tuser[80:1], 16'd0, qsfp_rx_axis_tuser[0]}}),
+
+    .mac_rx_status({qsfp_rx_status}),
+
+    // towards datapath
+    .tx_clk(eth_tx_clk),
+    .tx_rst(eth_tx_rst),
+
+    .tx_ptp_ts_96(eth_tx_ptp_ts_96),
+    .tx_ptp_ts_step(eth_tx_ptp_ts_step),
+
+    .s_axis_tx_tdata(axis_eth_tx_tdata),
+    .s_axis_tx_tkeep(axis_eth_tx_tkeep),
+    .s_axis_tx_tvalid(axis_eth_tx_tvalid),
+    .s_axis_tx_tready(axis_eth_tx_tready),
+    .s_axis_tx_tlast(axis_eth_tx_tlast),
+    .s_axis_tx_tuser(axis_eth_tx_tuser),
+
+    .m_axis_tx_ptp_ts(axis_eth_tx_ptp_ts),
+    .m_axis_tx_ptp_ts_tag(axis_eth_tx_ptp_ts_tag),
+    .m_axis_tx_ptp_ts_valid(axis_eth_tx_ptp_ts_valid),
+    .m_axis_tx_ptp_ts_ready(axis_eth_tx_ptp_ts_ready),
+
+    .tx_status(eth_tx_status),
+
+    .rx_clk(eth_rx_clk),
+    .rx_rst(eth_rx_rst),
+
+    .rx_ptp_clk(eth_rx_ptp_clk),
+    .rx_ptp_rst(eth_rx_ptp_rst),
+    .rx_ptp_ts_96(eth_rx_ptp_ts_96),
+    .rx_ptp_ts_step(eth_rx_ptp_ts_step),
+
+    .m_axis_rx_tdata(axis_eth_rx_tdata),
+    .m_axis_rx_tkeep(axis_eth_rx_tkeep),
+    .m_axis_rx_tvalid(axis_eth_rx_tvalid),
+    .m_axis_rx_tready(axis_eth_rx_tready),
+    .m_axis_rx_tlast(axis_eth_rx_tlast),
+    .m_axis_rx_tuser(axis_eth_rx_tuser),
+
+    .rx_status(eth_rx_status)
+);
 
 mqnic_core_pcie_us #(
     // FW and board IDs
@@ -646,21 +713,18 @@ mqnic_core_pcie_us #(
     .PORT_COUNT(PORT_COUNT),
 
     // PTP configuration
+    .PTP_CLK_PERIOD_NS_NUM(PTP_CLK_PERIOD_NS_NUM),
+    .PTP_CLK_PERIOD_NS_DENOM(PTP_CLK_PERIOD_NS_DENOM),
     .PTP_TS_WIDTH(PTP_TS_WIDTH),
-    .PTP_TAG_WIDTH(PTP_TAG_WIDTH),
-    .PTP_PERIOD_NS_WIDTH(PTP_PERIOD_NS_WIDTH),
-    .PTP_OFFSET_NS_WIDTH(PTP_OFFSET_NS_WIDTH),
-    .PTP_FNS_WIDTH(PTP_FNS_WIDTH),
-    .PTP_PERIOD_NS(PTP_PERIOD_NS),
-    .PTP_PERIOD_FNS(PTP_PERIOD_FNS),
     .PTP_CLOCK_PIPELINE(PTP_CLOCK_PIPELINE),
+    .PTP_CLOCK_CDC_PIPELINE(PTP_CLOCK_CDC_PIPELINE),
     .PTP_USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK),
     .PTP_SEPARATE_RX_CLOCK(PTP_SEPARATE_RX_CLOCK),
     .PTP_PORT_CDC_PIPELINE(PTP_PORT_CDC_PIPELINE),
     .PTP_PEROUT_ENABLE(PTP_PEROUT_ENABLE),
     .PTP_PEROUT_COUNT(PTP_PEROUT_COUNT),
 
-    // Queue manager configuration (interface)
+    // Queue manager configuration
     .EVENT_QUEUE_OP_TABLE_SIZE(EVENT_QUEUE_OP_TABLE_SIZE),
     .TX_QUEUE_OP_TABLE_SIZE(TX_QUEUE_OP_TABLE_SIZE),
     .RX_QUEUE_OP_TABLE_SIZE(RX_QUEUE_OP_TABLE_SIZE),
@@ -677,21 +741,20 @@ mqnic_core_pcie_us #(
     .TX_CPL_QUEUE_PIPELINE(TX_CPL_QUEUE_PIPELINE),
     .RX_CPL_QUEUE_PIPELINE(RX_CPL_QUEUE_PIPELINE),
 
-    // TX and RX engine configuration (port)
+    // TX and RX engine configuration
     .TX_DESC_TABLE_SIZE(TX_DESC_TABLE_SIZE),
     .RX_DESC_TABLE_SIZE(RX_DESC_TABLE_SIZE),
 
-    // Scheduler configuration (port)
+    // Scheduler configuration
     .TX_SCHEDULER_OP_TABLE_SIZE(TX_SCHEDULER_OP_TABLE_SIZE),
     .TX_SCHEDULER_PIPELINE(TX_SCHEDULER_PIPELINE),
     .TDMA_INDEX_WIDTH(TDMA_INDEX_WIDTH),
 
-    // Timestamping configuration (port)
+    // Interface configuration
     .PTP_TS_ENABLE(PTP_TS_ENABLE),
-    .TX_PTP_TS_FIFO_DEPTH(TX_PTP_TS_FIFO_DEPTH),
-    .RX_PTP_TS_FIFO_DEPTH(RX_PTP_TS_FIFO_DEPTH),
-
-    // Interface configuration (port)
+    .TX_CPL_ENABLE(PTP_TS_ENABLE),
+    .TX_CPL_FIFO_DEPTH(TX_CPL_FIFO_DEPTH),
+    .TX_TAG_WIDTH(TX_TAG_WIDTH),
     .TX_CHECKSUM_ENABLE(TX_CHECKSUM_ENABLE),
     .RX_RSS_ENABLE(RX_RSS_ENABLE),
     .RX_HASH_ENABLE(RX_HASH_ENABLE),
@@ -704,6 +767,7 @@ mqnic_core_pcie_us #(
     .RX_RAM_SIZE(RX_RAM_SIZE),
 
     // Application block configuration
+    .APP_ID(APP_ID),
     .APP_ENABLE(APP_ENABLE),
     .APP_CTRL_ENABLE(APP_CTRL_ENABLE),
     .APP_DMA_ENABLE(APP_DMA_ENABLE),
@@ -715,6 +779,8 @@ mqnic_core_pcie_us #(
     .APP_GPIO_OUT_WIDTH(32),
 
     // DMA interface configuration
+    .DMA_IMM_ENABLE(DMA_IMM_ENABLE),
+    .DMA_IMM_WIDTH(DMA_IMM_WIDTH),
     .DMA_LEN_WIDTH(DMA_LEN_WIDTH),
     .DMA_TAG_WIDTH(DMA_TAG_WIDTH),
     .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
@@ -922,10 +988,15 @@ core_inst (
     /*
      * PTP clock
      */
-    .ptp_sample_clk(clk_250mhz),
+    .ptp_clk(ptp_clk),
+    .ptp_rst(ptp_rst),
+    .ptp_sample_clk(ptp_sample_clk),
     .ptp_pps(ptp_pps),
     .ptp_ts_96(ptp_ts_96),
     .ptp_ts_step(ptp_ts_step),
+    .ptp_sync_pps(ptp_sync_pps),
+    .ptp_sync_ts_96(ptp_sync_ts_96),
+    .ptp_sync_ts_step(ptp_sync_ts_step),
     .ptp_perout_locked(ptp_perout_locked),
     .ptp_perout_error(ptp_perout_error),
     .ptp_perout_pulse(ptp_perout_pulse),
@@ -946,10 +1017,12 @@ core_inst (
     .m_axis_eth_tx_tlast(axis_eth_tx_tlast),
     .m_axis_eth_tx_tuser(axis_eth_tx_tuser),
 
-    .s_axis_eth_tx_ptp_ts(axis_eth_tx_ptp_ts),
-    .s_axis_eth_tx_ptp_ts_tag(axis_eth_tx_ptp_ts_tag),
-    .s_axis_eth_tx_ptp_ts_valid(axis_eth_tx_ptp_ts_valid),
-    .s_axis_eth_tx_ptp_ts_ready(axis_eth_tx_ptp_ts_ready),
+    .s_axis_eth_tx_cpl_ts(axis_eth_tx_ptp_ts),
+    .s_axis_eth_tx_cpl_tag(axis_eth_tx_ptp_ts_tag),
+    .s_axis_eth_tx_cpl_valid(axis_eth_tx_ptp_ts_valid),
+    .s_axis_eth_tx_cpl_ready(axis_eth_tx_ptp_ts_ready),
+
+    .eth_tx_status(eth_tx_status),
 
     .eth_rx_clk(eth_rx_clk),
     .eth_rx_rst(eth_rx_rst),
@@ -965,6 +1038,8 @@ core_inst (
     .s_axis_eth_rx_tready(axis_eth_rx_tready),
     .s_axis_eth_rx_tlast(axis_eth_rx_tlast),
     .s_axis_eth_rx_tuser(axis_eth_rx_tuser),
+
+    .eth_rx_status(eth_rx_status),
 
     /*
      * Statistics input

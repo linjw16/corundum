@@ -60,21 +60,18 @@ module mqnic_core_pcie_us #
     parameter PORT_COUNT = IF_COUNT*PORTS_PER_IF,
 
     // PTP configuration
+    parameter PTP_CLK_PERIOD_NS_NUM = 4,
+    parameter PTP_CLK_PERIOD_NS_DENOM = 1,
     parameter PTP_TS_WIDTH = 96,
-    parameter PTP_TAG_WIDTH = 16,
-    parameter PTP_PERIOD_NS_WIDTH = 4,
-    parameter PTP_OFFSET_NS_WIDTH = 32,
-    parameter PTP_FNS_WIDTH = 32,
-    parameter PTP_PERIOD_NS = 4'd4,
-    parameter PTP_PERIOD_FNS = 32'd0,
     parameter PTP_CLOCK_PIPELINE = 0,
+    parameter PTP_CLOCK_CDC_PIPELINE = 0,
     parameter PTP_USE_SAMPLE_CLOCK = 0,
     parameter PTP_SEPARATE_RX_CLOCK = 0,
     parameter PTP_PORT_CDC_PIPELINE = 0,
     parameter PTP_PEROUT_ENABLE = 0,
     parameter PTP_PEROUT_COUNT = 1,
 
-    // Queue manager configuration (interface)
+    // Queue manager configuration
     parameter EVENT_QUEUE_OP_TABLE_SIZE = 32,
     parameter TX_QUEUE_OP_TABLE_SIZE = 32,
     parameter RX_QUEUE_OP_TABLE_SIZE = 32,
@@ -91,21 +88,20 @@ module mqnic_core_pcie_us #
     parameter TX_CPL_QUEUE_PIPELINE = TX_QUEUE_PIPELINE,
     parameter RX_CPL_QUEUE_PIPELINE = RX_QUEUE_PIPELINE,
 
-    // TX and RX engine configuration (port)
+    // TX and RX engine configuration
     parameter TX_DESC_TABLE_SIZE = 32,
     parameter RX_DESC_TABLE_SIZE = 32,
 
-    // Scheduler configuration (port)
+    // Scheduler configuration
     parameter TX_SCHEDULER_OP_TABLE_SIZE = TX_DESC_TABLE_SIZE,
     parameter TX_SCHEDULER_PIPELINE = TX_QUEUE_PIPELINE,
     parameter TDMA_INDEX_WIDTH = 6,
 
-    // Timestamping configuration (port)
+    // Interface configuration
     parameter PTP_TS_ENABLE = 1,
-    parameter TX_PTP_TS_FIFO_DEPTH = 32,
-    parameter RX_PTP_TS_FIFO_DEPTH = 32,
-
-    // Interface configuration (port)
+    parameter TX_CPL_ENABLE = PTP_TS_ENABLE,
+    parameter TX_CPL_FIFO_DEPTH = 32,
+    parameter TX_TAG_WIDTH = $clog2(TX_DESC_TABLE_SIZE)+1,
     parameter TX_CHECKSUM_ENABLE = 1,
     parameter RX_RSS_ENABLE = 1,
     parameter RX_HASH_ENABLE = 1,
@@ -118,6 +114,7 @@ module mqnic_core_pcie_us #
     parameter RX_RAM_SIZE = 32768,
 
     // Application block configuration
+    parameter APP_ID = 32'h00000000,
     parameter APP_ENABLE = 0,
     parameter APP_CTRL_ENABLE = 1,
     parameter APP_DMA_ENABLE = 1,
@@ -129,6 +126,8 @@ module mqnic_core_pcie_us #
     parameter APP_GPIO_OUT_WIDTH = 32,
 
     // DMA interface configuration
+    parameter DMA_IMM_ENABLE = 0,
+    parameter DMA_IMM_WIDTH = 32,
     parameter DMA_LEN_WIDTH = 16,
     parameter DMA_TAG_WIDTH = 16,
     parameter RAM_ADDR_WIDTH = $clog2(TX_RAM_SIZE > RX_RAM_SIZE ? TX_RAM_SIZE : RX_RAM_SIZE),
@@ -172,7 +171,7 @@ module mqnic_core_pcie_us #
     parameter AXIS_ETH_KEEP_WIDTH = AXIS_ETH_DATA_WIDTH/8,
     parameter AXIS_ETH_SYNC_DATA_WIDTH = AXIS_ETH_DATA_WIDTH,
     parameter AXIS_ETH_IF_DATA_WIDTH = AXIS_ETH_SYNC_DATA_WIDTH*2**$clog2(PORTS_PER_IF),
-    parameter AXIS_ETH_TX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TAG_WIDTH : 0) + 1,
+    parameter AXIS_ETH_TX_USER_WIDTH = TX_TAG_WIDTH + 1,
     parameter AXIS_ETH_RX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TS_WIDTH : 0) + 1,
     parameter AXIS_ETH_RX_USE_READY = 0,
     parameter AXIS_ETH_TX_PIPELINE = 0,
@@ -337,10 +336,15 @@ module mqnic_core_pcie_us #
     /*
      * PTP clock
      */
+    input  wire                                          ptp_clk,
+    input  wire                                          ptp_rst,
     input  wire                                          ptp_sample_clk,
     output wire                                          ptp_pps,
     output wire [PTP_TS_WIDTH-1:0]                       ptp_ts_96,
     output wire                                          ptp_ts_step,
+    output wire                                          ptp_sync_pps,
+    output wire [PTP_TS_WIDTH-1:0]                       ptp_sync_ts_96,
+    output wire                                          ptp_sync_ts_step,
     output wire [PTP_PEROUT_COUNT-1:0]                   ptp_perout_locked,
     output wire [PTP_PEROUT_COUNT-1:0]                   ptp_perout_error,
     output wire [PTP_PEROUT_COUNT-1:0]                   ptp_perout_pulse,
@@ -361,10 +365,12 @@ module mqnic_core_pcie_us #
     output wire [PORT_COUNT-1:0]                         m_axis_eth_tx_tlast,
     output wire [PORT_COUNT*AXIS_ETH_TX_USER_WIDTH-1:0]  m_axis_eth_tx_tuser,
 
-    input  wire [PORT_COUNT*PTP_TS_WIDTH-1:0]            s_axis_eth_tx_ptp_ts,
-    input  wire [PORT_COUNT*PTP_TAG_WIDTH-1:0]           s_axis_eth_tx_ptp_ts_tag,
-    input  wire [PORT_COUNT-1:0]                         s_axis_eth_tx_ptp_ts_valid,
-    output wire [PORT_COUNT-1:0]                         s_axis_eth_tx_ptp_ts_ready,
+    input  wire [PORT_COUNT*PTP_TS_WIDTH-1:0]            s_axis_eth_tx_cpl_ts,
+    input  wire [PORT_COUNT*TX_TAG_WIDTH-1:0]            s_axis_eth_tx_cpl_tag,
+    input  wire [PORT_COUNT-1:0]                         s_axis_eth_tx_cpl_valid,
+    output wire [PORT_COUNT-1:0]                         s_axis_eth_tx_cpl_ready,
+
+    input  wire [PORT_COUNT-1:0]                         eth_tx_status,
 
     input  wire [PORT_COUNT-1:0]                         eth_rx_clk,
     input  wire [PORT_COUNT-1:0]                         eth_rx_rst,
@@ -380,6 +386,8 @@ module mqnic_core_pcie_us #
     output wire [PORT_COUNT-1:0]                         s_axis_eth_rx_tready,
     input  wire [PORT_COUNT-1:0]                         s_axis_eth_rx_tlast,
     input  wire [PORT_COUNT*AXIS_ETH_RX_USER_WIDTH-1:0]  s_axis_eth_rx_tuser,
+
+    input  wire [PORT_COUNT-1:0]                         eth_rx_status,
 
     /*
      * Statistics increment input
@@ -693,21 +701,18 @@ mqnic_core_pcie #(
     .PORT_COUNT(PORT_COUNT),
 
     // PTP configuration
+    .PTP_CLK_PERIOD_NS_NUM(PTP_CLK_PERIOD_NS_NUM),
+    .PTP_CLK_PERIOD_NS_DENOM(PTP_CLK_PERIOD_NS_DENOM),
     .PTP_TS_WIDTH(PTP_TS_WIDTH),
-    .PTP_TAG_WIDTH(PTP_TAG_WIDTH),
-    .PTP_PERIOD_NS_WIDTH(PTP_PERIOD_NS_WIDTH),
-    .PTP_OFFSET_NS_WIDTH(PTP_OFFSET_NS_WIDTH),
-    .PTP_FNS_WIDTH(PTP_FNS_WIDTH),
-    .PTP_PERIOD_NS(PTP_PERIOD_NS),
-    .PTP_PERIOD_FNS(PTP_PERIOD_FNS),
     .PTP_CLOCK_PIPELINE(PTP_CLOCK_PIPELINE),
+    .PTP_CLOCK_CDC_PIPELINE(PTP_CLOCK_CDC_PIPELINE),
     .PTP_USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK),
     .PTP_SEPARATE_RX_CLOCK(PTP_SEPARATE_RX_CLOCK),
     .PTP_PORT_CDC_PIPELINE(PTP_PORT_CDC_PIPELINE),
     .PTP_PEROUT_ENABLE(PTP_PEROUT_ENABLE),
     .PTP_PEROUT_COUNT(PTP_PEROUT_COUNT),
 
-    // Queue manager configuration (interface)
+    // Queue manager configuration
     .EVENT_QUEUE_OP_TABLE_SIZE(EVENT_QUEUE_OP_TABLE_SIZE),
     .TX_QUEUE_OP_TABLE_SIZE(TX_QUEUE_OP_TABLE_SIZE),
     .RX_QUEUE_OP_TABLE_SIZE(RX_QUEUE_OP_TABLE_SIZE),
@@ -724,21 +729,20 @@ mqnic_core_pcie #(
     .TX_CPL_QUEUE_PIPELINE(TX_CPL_QUEUE_PIPELINE),
     .RX_CPL_QUEUE_PIPELINE(RX_CPL_QUEUE_PIPELINE),
 
-    // TX and RX engine configuration (port)
+    // TX and RX engine configuration
     .TX_DESC_TABLE_SIZE(TX_DESC_TABLE_SIZE),
     .RX_DESC_TABLE_SIZE(RX_DESC_TABLE_SIZE),
 
-    // Scheduler configuration (port)
+    // Scheduler configuration
     .TX_SCHEDULER_OP_TABLE_SIZE(TX_SCHEDULER_OP_TABLE_SIZE),
     .TX_SCHEDULER_PIPELINE(TX_SCHEDULER_PIPELINE),
     .TDMA_INDEX_WIDTH(TDMA_INDEX_WIDTH),
 
-    // Timestamping configuration (port)
+    // Interface configuration
     .PTP_TS_ENABLE(PTP_TS_ENABLE),
-    .TX_PTP_TS_FIFO_DEPTH(TX_PTP_TS_FIFO_DEPTH),
-    .RX_PTP_TS_FIFO_DEPTH(RX_PTP_TS_FIFO_DEPTH),
-
-    // Interface configuration (port)
+    .TX_CPL_ENABLE(TX_CPL_ENABLE),
+    .TX_CPL_FIFO_DEPTH(TX_CPL_FIFO_DEPTH),
+    .TX_TAG_WIDTH(TX_TAG_WIDTH),
     .TX_CHECKSUM_ENABLE(TX_CHECKSUM_ENABLE),
     .RX_RSS_ENABLE(RX_RSS_ENABLE),
     .RX_HASH_ENABLE(RX_HASH_ENABLE),
@@ -751,6 +755,7 @@ mqnic_core_pcie #(
     .RX_RAM_SIZE(RX_RAM_SIZE),
 
     // Application block configuration
+    .APP_ID(APP_ID),
     .APP_ENABLE(APP_ENABLE),
     .APP_CTRL_ENABLE(APP_CTRL_ENABLE),
     .APP_DMA_ENABLE(APP_DMA_ENABLE),
@@ -760,6 +765,8 @@ mqnic_core_pcie #(
     .APP_STAT_ENABLE(APP_STAT_ENABLE),
 
     // DMA interface configuration
+    .DMA_IMM_ENABLE(DMA_IMM_ENABLE),
+    .DMA_IMM_WIDTH(DMA_IMM_WIDTH),
     .DMA_LEN_WIDTH(DMA_LEN_WIDTH),
     .DMA_TAG_WIDTH(DMA_TAG_WIDTH),
     .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
@@ -960,10 +967,15 @@ core_pcie_inst (
     /*
      * PTP clock
      */
+    .ptp_clk(ptp_clk),
+    .ptp_rst(ptp_rst),
     .ptp_sample_clk(ptp_sample_clk),
     .ptp_pps(ptp_pps),
     .ptp_ts_96(ptp_ts_96),
     .ptp_ts_step(ptp_ts_step),
+    .ptp_sync_pps(ptp_sync_pps),
+    .ptp_sync_ts_96(ptp_sync_ts_96),
+    .ptp_sync_ts_step(ptp_sync_ts_step),
     .ptp_perout_locked(ptp_perout_locked),
     .ptp_perout_error(ptp_perout_error),
     .ptp_perout_pulse(ptp_perout_pulse),
@@ -984,10 +996,12 @@ core_pcie_inst (
     .m_axis_tx_tlast(m_axis_eth_tx_tlast),
     .m_axis_tx_tuser(m_axis_eth_tx_tuser),
 
-    .s_axis_tx_ptp_ts(s_axis_eth_tx_ptp_ts),
-    .s_axis_tx_ptp_ts_tag(s_axis_eth_tx_ptp_ts_tag),
-    .s_axis_tx_ptp_ts_valid(s_axis_eth_tx_ptp_ts_valid),
-    .s_axis_tx_ptp_ts_ready(s_axis_eth_tx_ptp_ts_ready),
+    .s_axis_tx_cpl_ts(s_axis_eth_tx_cpl_ts),
+    .s_axis_tx_cpl_tag(s_axis_eth_tx_cpl_tag),
+    .s_axis_tx_cpl_valid(s_axis_eth_tx_cpl_valid),
+    .s_axis_tx_cpl_ready(s_axis_eth_tx_cpl_ready),
+
+    .tx_status(eth_tx_status),
 
     .rx_clk(eth_rx_clk),
     .rx_rst(eth_rx_rst),
@@ -1003,6 +1017,8 @@ core_pcie_inst (
     .s_axis_rx_tready(s_axis_eth_rx_tready),
     .s_axis_rx_tlast(s_axis_eth_rx_tlast),
     .s_axis_rx_tuser(s_axis_eth_rx_tuser),
+
+    .rx_status(eth_rx_status),
 
     /*
      * Statistics input

@@ -153,7 +153,7 @@ MQNIC_RB_IF_REG_STRIDE      = 0x14
 MQNIC_RB_IF_REG_CSR_OFFSET  = 0x18
 
 MQNIC_RB_IF_CTRL_TYPE            = 0x0000C001
-MQNIC_RB_IF_CTRL_VER             = 0x00000300
+MQNIC_RB_IF_CTRL_VER             = 0x00000400
 MQNIC_RB_IF_CTRL_REG_FEATURES    = 0x0C
 MQNIC_RB_IF_CTRL_REG_PORT_COUNT  = 0x10
 MQNIC_RB_IF_CTRL_REG_SCHED_COUNT = 0x14
@@ -161,13 +161,21 @@ MQNIC_RB_IF_CTRL_REG_MAX_TX_MTU  = 0x20
 MQNIC_RB_IF_CTRL_REG_MAX_RX_MTU  = 0x24
 MQNIC_RB_IF_CTRL_REG_TX_MTU      = 0x28
 MQNIC_RB_IF_CTRL_REG_RX_MTU      = 0x2C
-MQNIC_RB_IF_CTRL_REG_RSS_MASK    = 0x30
 
 MQNIC_IF_FEATURE_RSS      = (1 << 0)
 MQNIC_IF_FEATURE_PTP_TS   = (1 << 4)
 MQNIC_IF_FEATURE_TX_CSUM  = (1 << 8)
 MQNIC_IF_FEATURE_RX_CSUM  = (1 << 9)
 MQNIC_IF_FEATURE_RX_HASH  = (1 << 10)
+
+MQNIC_RB_RX_QUEUE_MAP_TYPE             = 0x0000C090
+MQNIC_RB_RX_QUEUE_MAP_VER              = 0x00000100
+MQNIC_RB_RX_QUEUE_MAP_REG_PORTS        = 0x0C
+MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET        = 0x10
+MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE        = 0x10
+MQNIC_RB_RX_QUEUE_MAP_CH_REG_OFFSET    = 0x00
+MQNIC_RB_RX_QUEUE_MAP_CH_REG_RSS_MASK  = 0x04
+MQNIC_RB_RX_QUEUE_MAP_CH_REG_APP_MASK  = 0x08
 
 MQNIC_RB_EVENT_QM_TYPE        = 0x0000C010
 MQNIC_RB_EVENT_QM_VER         = 0x00000100
@@ -199,8 +207,18 @@ MQNIC_RB_RX_CQM_REG_OFFSET  = 0x0C
 MQNIC_RB_RX_CQM_REG_COUNT   = 0x10
 MQNIC_RB_RX_CQM_REG_STRIDE  = 0x14
 
-MQNIC_RB_SCHED_BLOCK_TYPE        = 0x0000C003
-MQNIC_RB_SCHED_BLOCK_VER         = 0x00000100
+MQNIC_RB_PORT_TYPE        = 0x0000C002
+MQNIC_RB_PORT_VER         = 0x00000200
+MQNIC_RB_PORT_REG_OFFSET  = 0x0C
+
+MQNIC_RB_PORT_CTRL_TYPE           = 0x0000C003
+MQNIC_RB_PORT_CTRL_VER            = 0x00000200
+MQNIC_RB_PORT_CTRL_REG_FEATURES   = 0x0C
+MQNIC_RB_PORT_CTRL_REG_TX_STATUS  = 0x10
+MQNIC_RB_PORT_CTRL_REG_RX_STATUS  = 0x14
+
+MQNIC_RB_SCHED_BLOCK_TYPE        = 0x0000C004
+MQNIC_RB_SCHED_BLOCK_VER         = 0x00000300
 MQNIC_RB_SCHED_BLOCK_REG_OFFSET  = 0x0C
 
 MQNIC_RB_SCHED_RR_TYPE           = 0x0000C040
@@ -240,6 +258,10 @@ MQNIC_RB_TDMA_SCH_REG_ACTIVE_PERIOD_FNS    = 0x50
 MQNIC_RB_TDMA_SCH_REG_ACTIVE_PERIOD_NS     = 0x54
 MQNIC_RB_TDMA_SCH_REG_ACTIVE_PERIOD_SEC_L  = 0x58
 MQNIC_RB_TDMA_SCH_REG_ACTIVE_PERIOD_SEC_H  = 0x5C
+
+MQNIC_RB_APP_INFO_TYPE    = 0x0000C005
+MQNIC_RB_APP_INFO_VER     = 0x00000200
+MQNIC_RB_APP_INFO_REG_ID  = 0x0C
 
 MQNIC_QUEUE_BASE_ADDR_REG       = 0x00
 MQNIC_QUEUE_ACTIVE_LOG_SIZE_REG = 0x08
@@ -326,6 +348,7 @@ class RegBlockList:
 class Packet:
     def __init__(self, data=b''):
         self.data = data
+        self.queue = None
         self.timestamp_s = None
         self.timestamp_ns = None
         self.rx_checksum = None
@@ -333,6 +356,7 @@ class Packet:
     def __repr__(self):
         return (
             f'{type(self).__name__}(data={self.data}, '
+            f'queue={self.queue}, '
             f'timestamp_s={self.timestamp_s}, '
             f'timestamp_ns={self.timestamp_ns}, '
             f'rx_checksum={self.rx_checksum:#06x})'
@@ -786,6 +810,38 @@ class SchedulerBlock:
         self.log.info("Scheduler count: %d", self.sched_count)
 
 
+class Port:
+    def __init__(self, interface, index, rb):
+        self.interface = interface
+        self.log = interface.log
+        self.driver = interface.driver
+        self.index = index
+
+        self.port_rb = rb
+        self.reg_blocks = RegBlockList()
+        self.port_ctrl_rb = None
+
+        self.port_features = None
+
+    async def init(self):
+        # Read ID registers
+
+        offset = await self.port_rb.read_dword(MQNIC_RB_PORT_REG_OFFSET)
+        await self.reg_blocks.enumerate_reg_blocks(self.port_rb.parent, offset)
+
+        self.port_ctrl_rb = self.reg_blocks.find(MQNIC_RB_PORT_CTRL_TYPE, MQNIC_RB_PORT_CTRL_VER)
+
+        self.port_features = await self.port_ctrl_rb.read_dword(MQNIC_RB_PORT_CTRL_REG_FEATURES)
+
+        self.log.info("Port features: 0x%08x", self.port_features)
+
+    async def get_tx_status(self, port):
+        return await self.port_ctrl_rb.read_dword(MQNIC_RB_PORT_CTRL_REG_TX_STATUS)
+
+    async def get_rx_status(self, port):
+        return await self.port_ctrl_rb.read_dword(MQNIC_RB_PORT_CTRL_REG_RX_STATUS)
+
+
 class Interface:
     def __init__(self, driver, index, hw_regs):
         self.driver = driver
@@ -802,6 +858,7 @@ class Interface:
         self.tx_cpl_queue_rb = None
         self.rx_queue_rb = None
         self.rx_cpl_queue_rb = None
+        self.rx_queue_map_rb = None
 
         self.if_features = None
 
@@ -833,6 +890,7 @@ class Interface:
         self.tx_cpl_queues = []
         self.rx_queues = []
         self.rx_cpl_queues = []
+        self.ports = []
         self.sched_blocks = []
 
         self.interrupt_running = False
@@ -923,6 +981,13 @@ class Interface:
 
         self.rx_cpl_queue_count = min(self.rx_cpl_queue_count, MQNIC_MAX_RX_CPL_RINGS)
 
+        self.rx_queue_map_rb = self.reg_blocks.find(MQNIC_RB_RX_QUEUE_MAP_TYPE, MQNIC_RB_RX_QUEUE_MAP_VER)
+
+        for k in range(self.port_count):
+            await self.set_rx_queue_map_offset(k, 0)
+            await self.set_rx_queue_map_rss_mask(k, 0)
+            await self.set_rx_queue_map_app_mask(k, 0)
+
         self.event_queues = []
 
         self.tx_queues = []
@@ -930,6 +995,7 @@ class Interface:
         self.rx_queues = []
         self.rx_cpl_queues = []
         self.ports = []
+        self.sched_blocks = []
 
         for k in range(self.event_queue_count):
             q = EqRing(self, 1024, MQNIC_EVENT_SIZE, self.index,
@@ -960,6 +1026,13 @@ class Interface:
                     self.hw_regs.create_window(self.rx_cpl_queue_offset + k*self.rx_cpl_queue_stride, self.rx_cpl_queue_stride))
             await q.init()
             self.rx_cpl_queues.append(q)
+
+        for k in range(self.port_count):
+            rb = self.reg_blocks.find(MQNIC_RB_PORT_TYPE, MQNIC_RB_PORT_VER, index=k)
+
+            p = Port(self, k, rb)
+            await p.init()
+            self.ports.append(p)
 
         for k in range(self.sched_block_count):
             rb = self.reg_blocks.find(MQNIC_RB_SCHED_BLOCK_TYPE, MQNIC_RB_SCHED_BLOCK_VER, index=k)
@@ -1120,6 +1193,7 @@ class Interface:
 
             skb = Packet()
             skb.data = pkt[:length]
+            skb.queue = ring.index
             skb.timestamp_ns = cpl_data[3]
             skb.timestamp_s = cpl_data[4]
             skb.rx_checksum = cpl_data[5]
@@ -1218,8 +1292,29 @@ class Interface:
         await self.if_ctrl_rb.write_dword(MQNIC_RB_IF_CTRL_REG_TX_MTU, mtu)
         await self.if_ctrl_rb.write_dword(MQNIC_RB_IF_CTRL_REG_RX_MTU, mtu)
 
-    async def set_rss_mask(self, mask):
-        await self.if_ctrl_rb.write_dword(MQNIC_RB_IF_CTRL_REG_RSS_MASK, mask)
+    async def get_rx_queue_map_offset(self, port):
+        return await self.rx_queue_map_rb.read_dword(MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET +
+            MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE*port + MQNIC_RB_RX_QUEUE_MAP_CH_REG_OFFSET)
+
+    async def set_rx_queue_map_offset(self, port, val):
+        await self.rx_queue_map_rb.write_dword(MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET +
+            MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE*port + MQNIC_RB_RX_QUEUE_MAP_CH_REG_OFFSET, val)
+
+    async def get_rx_queue_map_rss_mask(self, port):
+        return await self.rx_queue_map_rb.read_dword(MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET +
+            MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE*port + MQNIC_RB_RX_QUEUE_MAP_CH_REG_RSS_MASK)
+
+    async def set_rx_queue_map_rss_mask(self, port, val):
+        await self.rx_queue_map_rb.write_dword(MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET +
+            MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE*port + MQNIC_RB_RX_QUEUE_MAP_CH_REG_RSS_MASK, val)
+
+    async def get_rx_queue_map_app_mask(self, port):
+        return await self.rx_queue_map_rb.read_dword(MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET +
+            MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE*port + MQNIC_RB_RX_QUEUE_MAP_CH_REG_APP_MASK)
+
+    async def set_rx_queue_map_app_mask(self, port, val):
+        await self.rx_queue_map_rb.write_dword(MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET +
+            MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE*port + MQNIC_RB_RX_QUEUE_MAP_CH_REG_APP_MASK, val)
 
     async def recv(self):
         if not self.pkt_rx_queue:
@@ -1299,6 +1394,8 @@ class Driver:
         self.build_time = None
         self.git_hash = None
         self.rel_info = None
+
+        self.app_id = None
 
         self.if_offset = None
         self.if_count = None
@@ -1383,6 +1480,12 @@ class Driver:
         self.log.info("Git hash: %08x", self.git_hash)
         self.rel_info = await self.fw_id_rb.read_dword(MQNIC_RB_FW_ID_REG_REL_INFO)
         self.log.info("Release info: %d", self.rel_info)
+
+        rb = self.reg_blocks.find(MQNIC_RB_APP_INFO_TYPE, MQNIC_RB_APP_INFO_VER)
+
+        if rb:
+            self.app_id = await rb.read_dword(MQNIC_RB_APP_INFO_REG_ID)
+            self.log.info("Application ID: 0x%08x", self.app_id)
 
         self.phc_rb = self.reg_blocks.find(MQNIC_RB_PHC_TYPE, MQNIC_RB_PHC_VER)
 

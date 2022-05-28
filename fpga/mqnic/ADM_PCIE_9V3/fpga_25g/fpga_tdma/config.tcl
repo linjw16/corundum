@@ -80,6 +80,9 @@ dict set params BUILD_DATE  "32'd${build_date}"
 dict set params GIT_HASH  "32'h${git_hash}"
 dict set params RELEASE_INFO  [format "32'h%08x" $release_info]
 
+# Board configuration
+dict set params TDMA_BER_ENABLE "1"
+
 # Transceiver configuration
 set eth_xcvr_freerun_freq {125}
 set eth_xcvr_line_rate {25.78125}
@@ -90,41 +93,19 @@ set eth_xcvr_sec_qpll_fracn [expr {int(fmod($eth_xcvr_sec_line_rate*1000/2 / $et
 set eth_xcvr_rx_eq_mode {DFE}
 
 # Structural configuration
-
-#  counts    QSFP 0                                QSFP 1
-# IF  PORT   0_0      0_1      0_2      0_3        1_0      1_1      1_2      1_3  
-# 1   1      0 (0.0)
-# 1   2      0 (0.0)  1 (0.1)
-# 1   3      0 (0.0)  1 (0.1)  2 (0.2)
-# 1   4      0 (0.0)  1 (0.1)  2 (0.2)  3 (0.3)
-# 1   5      0 (0.0)  1 (0.1)  2 (0.2)  3 (0.3)    4 (0.4)
-# 1   6      0 (0.0)  1 (0.1)  2 (0.2)  3 (0.3)    4 (0.4)  5 (0.5)
-# 1   7      0 (0.0)  1 (0.1)  2 (0.2)  3 (0.3)    4 (0.4)  5 (0.5)  6 (0.6)
-# 1   8      0 (0.0)  1 (0.1)  2 (0.2)  3 (0.3)    4 (0.4)  5 (0.5)  6 (0.6)  7 (0.7)
-# 2   1      0 (0.0)                               1 (1.0)
-# 2   2      0 (0.0)  1 (0.1)                      2 (1.0)  3 (1.1)
-# 2   3      0 (0.0)  1 (0.1)  2 (0.2)             3 (1.0)  4 (1.1)  5 (1.2)
-# 2   4      0 (0.0)  1 (0.1)  2 (0.2)  3 (0.3)    4 (1.0)  5 (1.1)  6 (1.2)  7 (1.3)
-# 3   1      0 (0.0)  1 (1.0)  2 (2.0)
-# 3   2      0 (0.0)  1 (0.1)  2 (1.0)  3 (1.1)    4 (2.0)  5 (2.1)
-# 4   1      0 (0.0)  1 (1.0)  2 (2.0)  3 (3.0)
-# 4   2      0 (0.0)  1 (0.1)  2 (1.0)  3 (1.1)    4 (2.0)  5 (2.1)  6 (3.0)  7 (3.1)
-# 5   1      0 (0.0)  1 (1.0)  2 (2.0)  3 (3.0)    4 (4.0)
-# 6   1      0 (0.0)  1 (1.0)  2 (2.0)  3 (3.0)    4 (4.0)  5 (5.0)
-# 7   1      0 (0.0)  1 (1.0)  2 (2.0)  3 (3.0)    4 (4.0)  5 (5.0)  6 (6.0)
-# 8   1      0 (0.0)  1 (1.0)  2 (2.0)  3 (3.0)    4 (4.0)  5 (5.0)  6 (6.0)  7 (7.0)
-
 dict set params IF_COUNT "2"
 dict set params PORTS_PER_IF "1"
 dict set params SCHED_PER_IF [dict get $params PORTS_PER_IF]
+dict set params PORT_MASK "0"
 
 # PTP configuration
 dict set params PTP_CLOCK_PIPELINE "0"
+dict set params PTP_CLOCK_CDC_PIPELINE "0"
 dict set params PTP_PORT_CDC_PIPELINE "0"
 dict set params PTP_PEROUT_ENABLE "0"
 dict set params PTP_PEROUT_COUNT "1"
 
-# Queue manager configuration (interface)
+# Queue manager configuration
 dict set params EVENT_QUEUE_OP_TABLE_SIZE "32"
 dict set params TX_QUEUE_OP_TABLE_SIZE "32"
 dict set params RX_QUEUE_OP_TABLE_SIZE "32"
@@ -141,21 +122,18 @@ dict set params RX_QUEUE_PIPELINE [expr 3+([dict get $params RX_QUEUE_INDEX_WIDT
 dict set params TX_CPL_QUEUE_PIPELINE [dict get $params TX_QUEUE_PIPELINE]
 dict set params RX_CPL_QUEUE_PIPELINE [dict get $params RX_QUEUE_PIPELINE]
 
-# TX and RX engine configuration (port)
+# TX and RX engine configuration
 dict set params TX_DESC_TABLE_SIZE "32"
 dict set params RX_DESC_TABLE_SIZE "32"
 
-# Scheduler configuration (port)
+# Scheduler configuration
 dict set params TX_SCHEDULER_OP_TABLE_SIZE [dict get $params TX_DESC_TABLE_SIZE]
 dict set params TX_SCHEDULER_PIPELINE [dict get $params TX_QUEUE_PIPELINE]
 dict set params TDMA_INDEX_WIDTH "6"
 
-# Timestamping configuration (port)
+# Interface configuration
 dict set params PTP_TS_ENABLE "1"
-dict set params TX_PTP_TS_FIFO_DEPTH "32"
-dict set params RX_PTP_TS_FIFO_DEPTH "32"
-
-# Interface configuration (port)
+dict set params TX_CPL_FIFO_DEPTH "32"
 dict set params TX_CHECKSUM_ENABLE "1"
 dict set params RX_RSS_ENABLE "1"
 dict set params RX_HASH_ENABLE "1"
@@ -165,9 +143,10 @@ dict set params RX_FIFO_DEPTH "32768"
 dict set params MAX_TX_SIZE "9214"
 dict set params MAX_RX_SIZE "9214"
 dict set params TX_RAM_SIZE "32768"
-dict set params RX_RAM_SIZE "32768"
+dict set params RX_RAM_SIZE "131072"
  
 # Application block configuration
+dict set params APP_ID "32'h00000000"
 dict set params APP_ENABLE "0"
 dict set params APP_CTRL_ENABLE "1"
 dict set params APP_DMA_ENABLE "1"
@@ -177,6 +156,8 @@ dict set params APP_AXIS_IF_ENABLE "1"
 dict set params APP_STAT_ENABLE "1"
 
 # DMA interface configuration
+dict set params DMA_IMM_ENABLE "0"
+dict set params DMA_IMM_WIDTH "32"
 dict set params DMA_LEN_WIDTH "16"
 dict set params DMA_TAG_WIDTH "16"
 dict set params RAM_ADDR_WIDTH [expr int(ceil(log(max([dict get $params TX_RAM_SIZE], [dict get $params RX_RAM_SIZE]))/log(2)))]

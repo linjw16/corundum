@@ -40,7 +40,7 @@ int mqnic_create_interface(struct mqnic_dev *mdev, struct mqnic_if **interface_p
 {
 	struct device *dev = mdev->dev;
 	struct mqnic_if *interface;
-	struct reg_block *rb;
+	struct mqnic_reg_block *rb;
 	int ret = 0;
 	int k;
 	u32 desc_block_size;
@@ -61,7 +61,7 @@ int mqnic_create_interface(struct mqnic_dev *mdev, struct mqnic_if **interface_p
 	interface->csr_hw_addr = hw_addr + mdev->if_csr_offset;
 
 	// Enumerate registers
-	interface->rb_list = enumerate_reg_block_list(interface->hw_addr, mdev->if_csr_offset, interface->hw_regs_size);
+	interface->rb_list = mqnic_enumerate_reg_block_list(interface->hw_addr, mdev->if_csr_offset, interface->hw_regs_size);
 	if (!interface->rb_list) {
 		ret = -EIO;
 		dev_err(dev, "Failed to enumerate blocks");
@@ -69,11 +69,11 @@ int mqnic_create_interface(struct mqnic_dev *mdev, struct mqnic_if **interface_p
 	}
 
 	dev_info(dev, "Interface-level register blocks:");
-	for (rb = interface->rb_list; rb->type && rb->version; rb++)
-		dev_info(dev, " type 0x%08x (v %d.%d.%d.%d)", rb->type, rb->version >> 24, 
+	for (rb = interface->rb_list; rb->regs; rb++)
+		dev_info(dev, " type 0x%08x (v %d.%d.%d.%d)", rb->type, rb->version >> 24,
 				(rb->version >> 16) & 0xff, (rb->version >> 8) & 0xff, rb->version & 0xff);
 
-	interface->if_ctrl_rb = find_reg_block(interface->rb_list, MQNIC_RB_IF_CTRL_TYPE, MQNIC_RB_IF_CTRL_VER, 0);
+	interface->if_ctrl_rb = mqnic_find_reg_block(interface->rb_list, MQNIC_RB_IF_CTRL_TYPE, MQNIC_RB_IF_CTRL_VER, 0);
 
 	if (!interface->if_ctrl_rb) {
 		ret = -EIO;
@@ -93,7 +93,7 @@ int mqnic_create_interface(struct mqnic_dev *mdev, struct mqnic_if **interface_p
 	dev_info(dev, "Max TX MTU: %d", interface->max_tx_mtu);
 	dev_info(dev, "Max RX MTU: %d", interface->max_rx_mtu);
 
-	interface->event_queue_rb = find_reg_block(interface->rb_list, MQNIC_RB_EVENT_QM_TYPE, MQNIC_RB_EVENT_QM_VER, 0);
+	interface->event_queue_rb = mqnic_find_reg_block(interface->rb_list, MQNIC_RB_EVENT_QM_TYPE, MQNIC_RB_EVENT_QM_VER, 0);
 
 	if (!interface->event_queue_rb) {
 		ret = -EIO;
@@ -111,7 +111,7 @@ int mqnic_create_interface(struct mqnic_dev *mdev, struct mqnic_if **interface_p
 
 	interface->event_queue_count = min_t(u32, interface->event_queue_count, MQNIC_MAX_EVENT_RINGS);
 
-	interface->tx_queue_rb = find_reg_block(interface->rb_list, MQNIC_RB_TX_QM_TYPE, MQNIC_RB_TX_QM_VER, 0);
+	interface->tx_queue_rb = mqnic_find_reg_block(interface->rb_list, MQNIC_RB_TX_QM_TYPE, MQNIC_RB_TX_QM_VER, 0);
 
 	if (!interface->tx_queue_rb) {
 		ret = -EIO;
@@ -129,7 +129,7 @@ int mqnic_create_interface(struct mqnic_dev *mdev, struct mqnic_if **interface_p
 
 	interface->tx_queue_count = min_t(u32, interface->tx_queue_count, MQNIC_MAX_TX_RINGS);
 
-	interface->tx_cpl_queue_rb = find_reg_block(interface->rb_list, MQNIC_RB_TX_CQM_TYPE, MQNIC_RB_TX_CQM_VER, 0);
+	interface->tx_cpl_queue_rb = mqnic_find_reg_block(interface->rb_list, MQNIC_RB_TX_CQM_TYPE, MQNIC_RB_TX_CQM_VER, 0);
 
 	if (!interface->tx_cpl_queue_rb) {
 		ret = -EIO;
@@ -147,7 +147,7 @@ int mqnic_create_interface(struct mqnic_dev *mdev, struct mqnic_if **interface_p
 
 	interface->tx_cpl_queue_count = min_t(u32, interface->tx_cpl_queue_count, MQNIC_MAX_TX_CPL_RINGS);
 
-	interface->rx_queue_rb = find_reg_block(interface->rb_list, MQNIC_RB_RX_QM_TYPE, MQNIC_RB_RX_QM_VER, 0);
+	interface->rx_queue_rb = mqnic_find_reg_block(interface->rb_list, MQNIC_RB_RX_QM_TYPE, MQNIC_RB_RX_QM_VER, 0);
 
 	if (!interface->rx_queue_rb) {
 		ret = -EIO;
@@ -165,7 +165,7 @@ int mqnic_create_interface(struct mqnic_dev *mdev, struct mqnic_if **interface_p
 
 	interface->rx_queue_count = min_t(u32, interface->rx_queue_count, MQNIC_MAX_RX_RINGS);
 
-	interface->rx_cpl_queue_rb = find_reg_block(interface->rb_list, MQNIC_RB_RX_CQM_TYPE, MQNIC_RB_RX_CQM_VER, 0);
+	interface->rx_cpl_queue_rb = mqnic_find_reg_block(interface->rb_list, MQNIC_RB_RX_CQM_TYPE, MQNIC_RB_RX_CQM_VER, 0);
 
 	if (!interface->rx_cpl_queue_rb) {
 		ret = -EIO;
@@ -182,6 +182,20 @@ int mqnic_create_interface(struct mqnic_dev *mdev, struct mqnic_if **interface_p
 	dev_info(dev, "RX completion queue stride: 0x%08x", interface->rx_cpl_queue_stride);
 
 	interface->rx_cpl_queue_count = min_t(u32, interface->rx_cpl_queue_count, MQNIC_MAX_RX_CPL_RINGS);
+
+	interface->rx_queue_map_rb = mqnic_find_reg_block(interface->rb_list, MQNIC_RB_RX_QUEUE_MAP_TYPE, MQNIC_RB_RX_QUEUE_MAP_VER, 0);
+
+	if (!interface->rx_queue_map_rb) {
+		ret = -EIO;
+		dev_err(dev, "RX queue map block not found");
+		goto fail;
+	}
+
+	for (k = 0; k < interface->port_count; k++) {
+		mqnic_interface_set_rx_queue_map_offset(interface, k, 0);
+		mqnic_interface_set_rx_queue_map_rss_mask(interface, k, 0);
+		mqnic_interface_set_rx_queue_map_app_mask(interface, k, 0);
+	}
 
 	// determine desc block size
 	iowrite32(0xf << 8, hw_addr + interface->tx_queue_offset + MQNIC_QUEUE_ACTIVE_LOG_SIZE_REG);
@@ -238,9 +252,25 @@ int mqnic_create_interface(struct mqnic_dev *mdev, struct mqnic_if **interface_p
 			goto fail;
 	}
 
+	// create ports
+	for (k = 0; k < interface->port_count; k++) {
+		struct mqnic_reg_block *port_rb = mqnic_find_reg_block(interface->rb_list, MQNIC_RB_PORT_TYPE, MQNIC_RB_PORT_VER, k);
+
+		if (!port_rb) {
+			ret = -EIO;
+			dev_err(dev, "Port index %d not found", k);
+			goto fail;
+		}
+
+		ret = mqnic_create_port(interface, &interface->port[k],
+				k, port_rb);
+		if (ret)
+			goto fail;
+	}
+
 	// create schedulers
 	for (k = 0; k < interface->sched_block_count; k++) {
-		struct reg_block *sched_block_rb = find_reg_block(interface->rb_list, MQNIC_RB_SCHED_BLOCK_TYPE, MQNIC_RB_SCHED_BLOCK_VER, k);
+		struct mqnic_reg_block *sched_block_rb = mqnic_find_reg_block(interface->rb_list, MQNIC_RB_SCHED_BLOCK_TYPE, MQNIC_RB_SCHED_BLOCK_VER, k);
 
 		if (!sched_block_rb) {
 			ret = -EIO;
@@ -308,39 +338,80 @@ void mqnic_destroy_interface(struct mqnic_if **interface_ptr)
 		if (interface->sched_block[k])
 			mqnic_destroy_sched_block(&interface->sched_block[k]);
 
+	// free ports
+	for (k = 0; k < ARRAY_SIZE(interface->port); k++)
+		if (interface->port[k])
+			mqnic_destroy_port(&interface->port[k]);
+
 	if (interface->rb_list)
-		free_reg_block_list(interface->rb_list);
+		mqnic_free_reg_block_list(interface->rb_list);
 
 	*interface_ptr = NULL;
 	kfree(interface);
-}
-
-u32 mqnic_interface_get_rss_mask(struct mqnic_if *interface)
-{
-	return ioread32(interface->if_ctrl_rb->regs + MQNIC_RB_IF_CTRL_REG_RSS_MASK);
-}
-
-void mqnic_interface_set_rss_mask(struct mqnic_if *interface, u32 rss_mask)
-{
-	iowrite32(rss_mask, interface->if_ctrl_rb->regs + MQNIC_RB_IF_CTRL_REG_RSS_MASK);
 }
 
 u32 mqnic_interface_get_tx_mtu(struct mqnic_if *interface)
 {
 	return ioread32(interface->if_ctrl_rb->regs + MQNIC_RB_IF_CTRL_REG_TX_MTU);
 }
+EXPORT_SYMBOL(mqnic_interface_get_tx_mtu);
 
 void mqnic_interface_set_tx_mtu(struct mqnic_if *interface, u32 mtu)
 {
 	iowrite32(mtu, interface->if_ctrl_rb->regs + MQNIC_RB_IF_CTRL_REG_TX_MTU);
 }
+EXPORT_SYMBOL(mqnic_interface_set_tx_mtu);
 
 u32 mqnic_interface_get_rx_mtu(struct mqnic_if *interface)
 {
 	return ioread32(interface->if_ctrl_rb->regs + MQNIC_RB_IF_CTRL_REG_RX_MTU);
 }
+EXPORT_SYMBOL(mqnic_interface_get_rx_mtu);
 
 void mqnic_interface_set_rx_mtu(struct mqnic_if *interface, u32 mtu)
 {
 	iowrite32(mtu, interface->if_ctrl_rb->regs + MQNIC_RB_IF_CTRL_REG_RX_MTU);
 }
+EXPORT_SYMBOL(mqnic_interface_set_rx_mtu);
+
+u32 mqnic_interface_get_rx_queue_map_offset(struct mqnic_if *interface, int port)
+{
+	return ioread32(interface->rx_queue_map_rb->regs + MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET +
+			MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE*port + MQNIC_RB_RX_QUEUE_MAP_CH_REG_OFFSET);
+}
+EXPORT_SYMBOL(mqnic_interface_get_rx_queue_map_offset);
+
+void mqnic_interface_set_rx_queue_map_offset(struct mqnic_if *interface, int port, u32 val)
+{
+	iowrite32(val, interface->rx_queue_map_rb->regs + MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET +
+			MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE*port + MQNIC_RB_RX_QUEUE_MAP_CH_REG_OFFSET);
+}
+EXPORT_SYMBOL(mqnic_interface_set_rx_queue_map_offset);
+
+u32 mqnic_interface_get_rx_queue_map_rss_mask(struct mqnic_if *interface, int port)
+{
+	return ioread32(interface->rx_queue_map_rb->regs + MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET +
+			MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE*port + MQNIC_RB_RX_QUEUE_MAP_CH_REG_RSS_MASK);
+}
+EXPORT_SYMBOL(mqnic_interface_get_rx_queue_map_rss_mask);
+
+void mqnic_interface_set_rx_queue_map_rss_mask(struct mqnic_if *interface, int port, u32 val)
+{
+	iowrite32(val, interface->rx_queue_map_rb->regs + MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET +
+			MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE*port + MQNIC_RB_RX_QUEUE_MAP_CH_REG_RSS_MASK);
+}
+EXPORT_SYMBOL(mqnic_interface_set_rx_queue_map_rss_mask);
+
+u32 mqnic_interface_get_rx_queue_map_app_mask(struct mqnic_if *interface, int port)
+{
+	return ioread32(interface->rx_queue_map_rb->regs + MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET +
+			MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE*port + MQNIC_RB_RX_QUEUE_MAP_CH_REG_APP_MASK);
+}
+EXPORT_SYMBOL(mqnic_interface_get_rx_queue_map_app_mask);
+
+void mqnic_interface_set_rx_queue_map_app_mask(struct mqnic_if *interface, int port, u32 val)
+{
+	iowrite32(val, interface->rx_queue_map_rb->regs + MQNIC_RB_RX_QUEUE_MAP_CH_OFFSET +
+			MQNIC_RB_RX_QUEUE_MAP_CH_STRIDE*port + MQNIC_RB_RX_QUEUE_MAP_CH_REG_APP_MASK);
+}
+EXPORT_SYMBOL(mqnic_interface_set_rx_queue_map_app_mask);

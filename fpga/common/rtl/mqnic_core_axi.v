@@ -60,21 +60,18 @@ module mqnic_core_axi #
     parameter PORT_COUNT = IF_COUNT*PORTS_PER_IF,
 
     // PTP configuration
+    parameter PTP_CLK_PERIOD_NS_NUM = 4,
+    parameter PTP_CLK_PERIOD_NS_DENOM = 1,
     parameter PTP_TS_WIDTH = 96,
-    parameter PTP_TAG_WIDTH = 16,
-    parameter PTP_PERIOD_NS_WIDTH = 4,
-    parameter PTP_OFFSET_NS_WIDTH = 32,
-    parameter PTP_FNS_WIDTH = 32,
-    parameter PTP_PERIOD_NS = 4'd4,
-    parameter PTP_PERIOD_FNS = 32'd0,
     parameter PTP_CLOCK_PIPELINE = 0,
+    parameter PTP_CLOCK_CDC_PIPELINE = 0,
     parameter PTP_USE_SAMPLE_CLOCK = 0,
     parameter PTP_SEPARATE_RX_CLOCK = 0,
     parameter PTP_PORT_CDC_PIPELINE = 0,
     parameter PTP_PEROUT_ENABLE = 0,
     parameter PTP_PEROUT_COUNT = 1,
 
-    // Queue manager configuration (interface)
+    // Queue manager configuration
     parameter EVENT_QUEUE_OP_TABLE_SIZE = 32,
     parameter TX_QUEUE_OP_TABLE_SIZE = 32,
     parameter RX_QUEUE_OP_TABLE_SIZE = 32,
@@ -91,21 +88,20 @@ module mqnic_core_axi #
     parameter TX_CPL_QUEUE_PIPELINE = TX_QUEUE_PIPELINE,
     parameter RX_CPL_QUEUE_PIPELINE = RX_QUEUE_PIPELINE,
 
-    // TX and RX engine configuration (port)
+    // TX and RX engine configuration
     parameter TX_DESC_TABLE_SIZE = 32,
     parameter RX_DESC_TABLE_SIZE = 32,
 
-    // Scheduler configuration (port)
+    // Scheduler configuration
     parameter TX_SCHEDULER_OP_TABLE_SIZE = TX_DESC_TABLE_SIZE,
     parameter TX_SCHEDULER_PIPELINE = TX_QUEUE_PIPELINE,
     parameter TDMA_INDEX_WIDTH = 6,
 
-    // Timestamping configuration (port)
+    // Interface configuration
     parameter PTP_TS_ENABLE = 1,
-    parameter TX_PTP_TS_FIFO_DEPTH = 32,
-    parameter RX_PTP_TS_FIFO_DEPTH = 32,
-
-    // Interface configuration (port)
+    parameter TX_CPL_ENABLE = PTP_TS_ENABLE,
+    parameter TX_CPL_FIFO_DEPTH = 32,
+    parameter TX_TAG_WIDTH = $clog2(TX_DESC_TABLE_SIZE)+1,
     parameter TX_CHECKSUM_ENABLE = 1,
     parameter RX_RSS_ENABLE = 1,
     parameter RX_HASH_ENABLE = 1,
@@ -118,6 +114,7 @@ module mqnic_core_axi #
     parameter RX_RAM_SIZE = 32768,
 
     // Application block configuration
+    parameter APP_ID = 32'h00000000,
     parameter APP_ENABLE = 0,
     parameter APP_CTRL_ENABLE = 1,
     parameter APP_DMA_ENABLE = 1,
@@ -135,6 +132,8 @@ module mqnic_core_axi #
     parameter AXI_ID_WIDTH = 8,
 
     // DMA interface configuration
+    parameter DMA_IMM_ENABLE = 0,
+    parameter DMA_IMM_WIDTH = 32,
     parameter DMA_LEN_WIDTH = 16,
     parameter DMA_TAG_WIDTH = 16,
     parameter RAM_ADDR_WIDTH = $clog2(TX_RAM_SIZE > RX_RAM_SIZE ? TX_RAM_SIZE : RX_RAM_SIZE),
@@ -167,7 +166,7 @@ module mqnic_core_axi #
     parameter AXIS_KEEP_WIDTH = AXIS_DATA_WIDTH/8,
     parameter AXIS_SYNC_DATA_WIDTH = AXIS_DATA_WIDTH,
     parameter AXIS_IF_DATA_WIDTH = AXIS_SYNC_DATA_WIDTH*2**$clog2(PORTS_PER_IF),
-    parameter AXIS_TX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TAG_WIDTH : 0) + 1,
+    parameter AXIS_TX_USER_WIDTH = TX_TAG_WIDTH + 1,
     parameter AXIS_RX_USER_WIDTH = (PTP_TS_ENABLE ? PTP_TS_WIDTH : 0) + 1,
     parameter AXIS_RX_USE_READY = 0,
     parameter AXIS_TX_PIPELINE = 0,
@@ -318,10 +317,15 @@ module mqnic_core_axi #
     /*
      * PTP clock
      */
+    input  wire                                       ptp_clk,
+    input  wire                                       ptp_rst,
     input  wire                                       ptp_sample_clk,
     output wire                                       ptp_pps,
     output wire [PTP_TS_WIDTH-1:0]                    ptp_ts_96,
     output wire                                       ptp_ts_step,
+    output wire                                       ptp_sync_pps,
+    output wire [PTP_TS_WIDTH-1:0]                    ptp_sync_ts_96,
+    output wire                                       ptp_sync_ts_step,
     output wire [PTP_PEROUT_COUNT-1:0]                ptp_perout_locked,
     output wire [PTP_PEROUT_COUNT-1:0]                ptp_perout_error,
     output wire [PTP_PEROUT_COUNT-1:0]                ptp_perout_pulse,
@@ -342,10 +346,12 @@ module mqnic_core_axi #
     output wire [PORT_COUNT-1:0]                      m_axis_tx_tlast,
     output wire [PORT_COUNT*AXIS_TX_USER_WIDTH-1:0]   m_axis_tx_tuser,
 
-    input  wire [PORT_COUNT*PTP_TS_WIDTH-1:0]         s_axis_tx_ptp_ts,
-    input  wire [PORT_COUNT*PTP_TAG_WIDTH-1:0]        s_axis_tx_ptp_ts_tag,
-    input  wire [PORT_COUNT-1:0]                      s_axis_tx_ptp_ts_valid,
-    output wire [PORT_COUNT-1:0]                      s_axis_tx_ptp_ts_ready,
+    input  wire [PORT_COUNT*PTP_TS_WIDTH-1:0]         s_axis_tx_cpl_ts,
+    input  wire [PORT_COUNT*TX_TAG_WIDTH-1:0]         s_axis_tx_cpl_tag,
+    input  wire [PORT_COUNT-1:0]                      s_axis_tx_cpl_valid,
+    output wire [PORT_COUNT-1:0]                      s_axis_tx_cpl_ready,
+
+    input  wire [PORT_COUNT-1:0]                      tx_status,
 
     input  wire [PORT_COUNT-1:0]                      rx_clk,
     input  wire [PORT_COUNT-1:0]                      rx_rst,
@@ -361,6 +367,8 @@ module mqnic_core_axi #
     output wire [PORT_COUNT-1:0]                      s_axis_rx_tready,
     input  wire [PORT_COUNT-1:0]                      s_axis_rx_tlast,
     input  wire [PORT_COUNT*AXIS_RX_USER_WIDTH-1:0]   s_axis_rx_tuser,
+
+    input  wire [PORT_COUNT-1:0]                      rx_status,
 
     /*
      * Statistics increment input
@@ -426,6 +434,8 @@ wire                       dma_read_desc_status_valid;
 wire [DMA_ADDR_WIDTH-1:0]  dma_write_desc_dma_addr;
 wire [RAM_SEL_WIDTH-1:0]   dma_write_desc_ram_sel;
 wire [RAM_ADDR_WIDTH-1:0]  dma_write_desc_ram_addr;
+wire [DMA_IMM_WIDTH-1:0]   dma_write_desc_imm;
+wire                       dma_write_desc_imm_en;
 wire [DMA_LEN_WIDTH-1:0]   dma_write_desc_len;
 wire [DMA_TAG_WIDTH-1:0]   dma_write_desc_tag;
 wire                       dma_write_desc_valid;
@@ -437,18 +447,49 @@ wire                       dma_write_desc_status_valid;
 
 wire                       dma_enable = 1;
 
+wire [$clog2(AXI_DMA_READ_OP_TABLE_SIZE)-1:0] stat_rd_op_start_tag;
+wire [DMA_LEN_WIDTH-1:0] stat_rd_op_start_len;
+wire stat_rd_op_start_valid;
+wire [$clog2(AXI_DMA_READ_OP_TABLE_SIZE)-1:0] stat_rd_op_finish_tag;
+wire [3:0] stat_rd_op_finish_status;
+wire stat_rd_op_finish_valid;
+wire [$clog2(AXI_DMA_READ_OP_TABLE_SIZE)-1:0] stat_rd_req_start_tag;
+wire [12:0] stat_rd_req_start_len;
+wire stat_rd_req_start_valid;
+wire [$clog2(AXI_DMA_READ_OP_TABLE_SIZE)-1:0] stat_rd_req_finish_tag;
+wire [3:0] stat_rd_req_finish_status;
+wire stat_rd_req_finish_valid;
+wire stat_rd_op_table_full;
+wire stat_rd_tx_stall;
+wire [$clog2(AXI_DMA_WRITE_OP_TABLE_SIZE)-1:0] stat_wr_op_start_tag;
+wire [DMA_LEN_WIDTH-1:0] stat_wr_op_start_len;
+wire stat_wr_op_start_valid;
+wire [$clog2(AXI_DMA_WRITE_OP_TABLE_SIZE)-1:0] stat_wr_op_finish_tag;
+wire [3:0] stat_wr_op_finish_status;
+wire stat_wr_op_finish_valid;
+wire [$clog2(AXI_DMA_WRITE_OP_TABLE_SIZE)-1:0] stat_wr_req_start_tag;
+wire [12:0] stat_wr_req_start_len;
+wire stat_wr_req_start_valid;
+wire [$clog2(AXI_DMA_WRITE_OP_TABLE_SIZE)-1:0] stat_wr_req_finish_tag;
+wire [3:0] stat_wr_req_finish_status;
+wire stat_wr_req_finish_valid;
+wire stat_wr_op_table_full;
+wire stat_wr_tx_stall;
+
 dma_if_axi #(
     .AXI_DATA_WIDTH(AXI_DATA_WIDTH),
     .AXI_ADDR_WIDTH(AXI_ADDR_WIDTH),
     .AXI_STRB_WIDTH(AXI_STRB_WIDTH),
     .AXI_ID_WIDTH(AXI_ID_WIDTH),
     .AXI_MAX_BURST_LEN(AXI_DMA_MAX_BURST_LEN),
-    .RAM_SEG_COUNT(RAM_SEG_COUNT),
-    .RAM_SEG_DATA_WIDTH(RAM_SEG_DATA_WIDTH),
-    .RAM_SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
-    .RAM_SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
     .RAM_SEL_WIDTH(RAM_SEL_WIDTH),
     .RAM_ADDR_WIDTH(RAM_ADDR_WIDTH),
+    .RAM_SEG_COUNT(RAM_SEG_COUNT),
+    .RAM_SEG_DATA_WIDTH(RAM_SEG_DATA_WIDTH),
+    .RAM_SEG_BE_WIDTH(RAM_SEG_BE_WIDTH),
+    .RAM_SEG_ADDR_WIDTH(RAM_SEG_ADDR_WIDTH),
+    .IMM_ENABLE(DMA_IMM_ENABLE),
+    .IMM_WIDTH(DMA_IMM_WIDTH),
     .LEN_WIDTH(DMA_LEN_WIDTH),
     .TAG_WIDTH(DMA_TAG_WIDTH),
     .READ_OP_TABLE_SIZE(AXI_DMA_READ_OP_TABLE_SIZE),
@@ -523,6 +564,8 @@ dma_if_axi_inst (
     .s_axis_write_desc_axi_addr(dma_write_desc_dma_addr),
     .s_axis_write_desc_ram_sel(dma_write_desc_ram_sel),
     .s_axis_write_desc_ram_addr(dma_write_desc_ram_addr),
+    .s_axis_write_desc_imm(dma_write_desc_imm),
+    .s_axis_write_desc_imm_en(dma_write_desc_imm_en),
     .s_axis_write_desc_len(dma_write_desc_len),
     .s_axis_write_desc_tag(dma_write_desc_tag),
     .s_axis_write_desc_valid(dma_write_desc_valid),
@@ -557,8 +600,182 @@ dma_if_axi_inst (
      * Configuration
      */
     .read_enable(dma_enable),
-    .write_enable(dma_enable)
+    .write_enable(dma_enable),
+
+    /*
+     * Statistics
+     */
+    .stat_rd_op_start_tag(stat_rd_op_start_tag),
+    .stat_rd_op_start_len(stat_rd_op_start_len),
+    .stat_rd_op_start_valid(stat_rd_op_start_valid),
+    .stat_rd_op_finish_tag(stat_rd_op_finish_tag),
+    .stat_rd_op_finish_status(stat_rd_op_finish_status),
+    .stat_rd_op_finish_valid(stat_rd_op_finish_valid),
+    .stat_rd_req_start_tag(stat_rd_req_start_tag),
+    .stat_rd_req_start_len(stat_rd_req_start_len),
+    .stat_rd_req_start_valid(stat_rd_req_start_valid),
+    .stat_rd_req_finish_tag(stat_rd_req_finish_tag),
+    .stat_rd_req_finish_status(stat_rd_req_finish_status),
+    .stat_rd_req_finish_valid(stat_rd_req_finish_valid),
+    .stat_rd_op_table_full(stat_rd_op_table_full),
+    .stat_rd_tx_stall(stat_rd_tx_stall),
+    .stat_wr_op_start_tag(stat_wr_op_start_tag),
+    .stat_wr_op_start_len(stat_wr_op_start_len),
+    .stat_wr_op_start_valid(stat_wr_op_start_valid),
+    .stat_wr_op_finish_tag(stat_wr_op_finish_tag),
+    .stat_wr_op_finish_status(stat_wr_op_finish_status),
+    .stat_wr_op_finish_valid(stat_wr_op_finish_valid),
+    .stat_wr_req_start_tag(stat_wr_req_start_tag),
+    .stat_wr_req_start_len(stat_wr_req_start_len),
+    .stat_wr_req_start_valid(stat_wr_req_start_valid),
+    .stat_wr_req_finish_tag(stat_wr_req_finish_tag),
+    .stat_wr_req_finish_status(stat_wr_req_finish_status),
+    .stat_wr_req_finish_valid(stat_wr_req_finish_valid),
+    .stat_wr_op_table_full(stat_wr_op_table_full),
+    .stat_wr_tx_stall(stat_wr_tx_stall)
 );
+
+wire [STAT_INC_WIDTH-1:0]  axis_stat_tdata;
+wire [STAT_ID_WIDTH-1:0]   axis_stat_tid;
+wire                       axis_stat_tvalid;
+wire                       axis_stat_tready;
+
+wire [STAT_INC_WIDTH-1:0]  axis_stat_axi_tdata = 0;
+wire [STAT_ID_WIDTH-1:0]   axis_stat_axi_tid = 0;
+wire                       axis_stat_axi_tvalid = 0;
+wire                       axis_stat_axi_tready;
+
+wire [STAT_INC_WIDTH-1:0]  axis_stat_dma_tdata;
+wire [STAT_ID_WIDTH-1:0]   axis_stat_dma_tid;
+wire                       axis_stat_dma_tvalid;
+wire                       axis_stat_dma_tready;
+
+generate
+
+if (STAT_ENABLE && STAT_DMA_ENABLE) begin : stats_dma_if_axi
+
+    stats_dma_if_axi #(
+        .LEN_WIDTH(DMA_LEN_WIDTH),
+        .READ_OP_TABLE_SIZE(AXI_DMA_READ_OP_TABLE_SIZE),
+        .WRITE_OP_TABLE_SIZE(AXI_DMA_WRITE_OP_TABLE_SIZE),
+        .STAT_INC_WIDTH(STAT_INC_WIDTH),
+        .STAT_ID_WIDTH(5),
+        .UPDATE_PERIOD(1024)
+    )
+    stats_dma_if_axi_inst (
+        .clk(clk),
+        .rst(rst),
+
+        /*
+         * Statistics from dma_if_axi
+         */
+        .stat_rd_op_start_tag(stat_rd_op_start_tag),
+        .stat_rd_op_start_len(stat_rd_op_start_len),
+        .stat_rd_op_start_valid(stat_rd_op_start_valid),
+        .stat_rd_op_finish_tag(stat_rd_op_finish_tag),
+        .stat_rd_op_finish_status(stat_rd_op_finish_status),
+        .stat_rd_op_finish_valid(stat_rd_op_finish_valid),
+        .stat_rd_req_start_tag(stat_rd_req_start_tag),
+        .stat_rd_req_start_len(stat_rd_req_start_len),
+        .stat_rd_req_start_valid(stat_rd_req_start_valid),
+        .stat_rd_req_finish_tag(stat_rd_req_finish_tag),
+        .stat_rd_req_finish_status(stat_rd_req_finish_status),
+        .stat_rd_req_finish_valid(stat_rd_req_finish_valid),
+        .stat_rd_op_table_full(stat_rd_op_table_full),
+        .stat_rd_tx_stall(stat_rd_tx_stall),
+        .stat_wr_op_start_tag(stat_wr_op_start_tag),
+        .stat_wr_op_start_len(stat_wr_op_start_len),
+        .stat_wr_op_start_valid(stat_wr_op_start_valid),
+        .stat_wr_op_finish_tag(stat_wr_op_finish_tag),
+        .stat_wr_op_finish_status(stat_wr_op_finish_status),
+        .stat_wr_op_finish_valid(stat_wr_op_finish_valid),
+        .stat_wr_req_start_tag(stat_wr_req_start_tag),
+        .stat_wr_req_start_len(stat_wr_req_start_len),
+        .stat_wr_req_start_valid(stat_wr_req_start_valid),
+        .stat_wr_req_finish_tag(stat_wr_req_finish_tag),
+        .stat_wr_req_finish_status(stat_wr_req_finish_status),
+        .stat_wr_req_finish_valid(stat_wr_req_finish_valid),
+        .stat_wr_op_table_full(stat_wr_op_table_full),
+        .stat_wr_tx_stall(stat_wr_tx_stall),
+
+        /*
+         * Statistics output
+         */
+        .m_axis_stat_tdata(axis_stat_dma_tdata),
+        .m_axis_stat_tid(axis_stat_dma_tid[4:0]),
+        .m_axis_stat_tvalid(axis_stat_dma_tvalid),
+        .m_axis_stat_tready(axis_stat_dma_tready),
+
+        /*
+         * Control inputs
+         */
+        .update(1'b0)
+    );
+
+    assign axis_stat_dma_tid[STAT_ID_WIDTH-1:5] = 1;
+
+end else begin
+
+    assign axis_stat_dma_tdata = 0;
+    assign axis_stat_dma_tid = 0;
+    assign axis_stat_dma_tvalid = 0;
+
+end
+
+if (STAT_ENABLE && (STAT_DMA_ENABLE || STAT_AXI_ENABLE)) begin : stats_mux
+
+    axis_arb_mux #(
+        .S_COUNT(3),
+        .DATA_WIDTH(STAT_INC_WIDTH),
+        .KEEP_ENABLE(0),
+        .ID_ENABLE(1),
+        .S_ID_WIDTH(STAT_ID_WIDTH),
+        .M_ID_WIDTH(STAT_ID_WIDTH),
+        .DEST_ENABLE(0),
+        .USER_ENABLE(0),
+        .LAST_ENABLE(0),
+        .ARB_TYPE_ROUND_ROBIN(1),
+        .ARB_LSB_HIGH_PRIORITY(1)
+    )
+    axis_stat_mux_inst (
+        .clk(clk),
+        .rst(rst),
+
+        /*
+         * AXI Stream inputs
+         */
+        .s_axis_tdata({axis_stat_dma_tdata, axis_stat_axi_tdata, s_axis_stat_tdata}),
+        .s_axis_tkeep(0),
+        .s_axis_tvalid({axis_stat_dma_tvalid, axis_stat_axi_tvalid, s_axis_stat_tvalid}),
+        .s_axis_tready({axis_stat_dma_tready, axis_stat_axi_tready, s_axis_stat_tready}),
+        .s_axis_tlast(0),
+        .s_axis_tid({axis_stat_dma_tid, axis_stat_axi_tid, s_axis_stat_tid}),
+        .s_axis_tdest(0),
+        .s_axis_tuser(0),
+
+        /*
+         * AXI Stream output
+         */
+        .m_axis_tdata(axis_stat_tdata),
+        .m_axis_tkeep(),
+        .m_axis_tvalid(axis_stat_tvalid),
+        .m_axis_tready(axis_stat_tready),
+        .m_axis_tlast(),
+        .m_axis_tid(axis_stat_tid),
+        .m_axis_tdest(),
+        .m_axis_tuser()
+    );
+
+end else begin
+
+    assign axis_stat_tdata = s_axis_stat_tdata;
+    assign axis_stat_tid = s_axis_stat_tid;
+    assign axis_stat_tvalid = s_axis_stat_tvalid;
+    assign s_axis_stat_tready = axis_stat_tready;
+
+end
+
+endgenerate
 
 mqnic_core #(
     // FW and board IDs
@@ -579,21 +796,18 @@ mqnic_core #(
     .PORT_COUNT(PORT_COUNT),
 
     // PTP configuration
+    .PTP_CLK_PERIOD_NS_NUM(PTP_CLK_PERIOD_NS_NUM),
+    .PTP_CLK_PERIOD_NS_DENOM(PTP_CLK_PERIOD_NS_DENOM),
     .PTP_TS_WIDTH(PTP_TS_WIDTH),
-    .PTP_TAG_WIDTH(PTP_TAG_WIDTH),
-    .PTP_PERIOD_NS_WIDTH(PTP_PERIOD_NS_WIDTH),
-    .PTP_OFFSET_NS_WIDTH(PTP_OFFSET_NS_WIDTH),
-    .PTP_FNS_WIDTH(PTP_FNS_WIDTH),
-    .PTP_PERIOD_NS(PTP_PERIOD_NS),
-    .PTP_PERIOD_FNS(PTP_PERIOD_FNS),
     .PTP_CLOCK_PIPELINE(PTP_CLOCK_PIPELINE),
+    .PTP_CLOCK_CDC_PIPELINE(PTP_CLOCK_CDC_PIPELINE),
     .PTP_USE_SAMPLE_CLOCK(PTP_USE_SAMPLE_CLOCK),
     .PTP_SEPARATE_RX_CLOCK(PTP_SEPARATE_RX_CLOCK),
     .PTP_PORT_CDC_PIPELINE(PTP_PORT_CDC_PIPELINE),
     .PTP_PEROUT_ENABLE(PTP_PEROUT_ENABLE),
     .PTP_PEROUT_COUNT(PTP_PEROUT_COUNT),
 
-    // Queue manager configuration (interface)
+    // Queue manager configuration
     .EVENT_QUEUE_OP_TABLE_SIZE(EVENT_QUEUE_OP_TABLE_SIZE),
     .TX_QUEUE_OP_TABLE_SIZE(TX_QUEUE_OP_TABLE_SIZE),
     .RX_QUEUE_OP_TABLE_SIZE(RX_QUEUE_OP_TABLE_SIZE),
@@ -610,21 +824,20 @@ mqnic_core #(
     .TX_CPL_QUEUE_PIPELINE(TX_CPL_QUEUE_PIPELINE),
     .RX_CPL_QUEUE_PIPELINE(RX_CPL_QUEUE_PIPELINE),
 
-    // TX and RX engine configuration (port)
+    // TX and RX engine configuration
     .TX_DESC_TABLE_SIZE(TX_DESC_TABLE_SIZE),
     .RX_DESC_TABLE_SIZE(RX_DESC_TABLE_SIZE),
 
-    // Scheduler configuration (port)
+    // Scheduler configuration
     .TX_SCHEDULER_OP_TABLE_SIZE(TX_SCHEDULER_OP_TABLE_SIZE),
     .TX_SCHEDULER_PIPELINE(TX_SCHEDULER_PIPELINE),
     .TDMA_INDEX_WIDTH(TDMA_INDEX_WIDTH),
 
-    // Timestamping configuration (port)
+    // Interface configuration
     .PTP_TS_ENABLE(PTP_TS_ENABLE),
-    .TX_PTP_TS_FIFO_DEPTH(TX_PTP_TS_FIFO_DEPTH),
-    .RX_PTP_TS_FIFO_DEPTH(RX_PTP_TS_FIFO_DEPTH),
-
-    // Interface configuration (port)
+    .TX_CPL_ENABLE(TX_CPL_ENABLE),
+    .TX_CPL_FIFO_DEPTH(TX_CPL_FIFO_DEPTH),
+    .TX_TAG_WIDTH(TX_TAG_WIDTH),
     .TX_CHECKSUM_ENABLE(TX_CHECKSUM_ENABLE),
     .RX_RSS_ENABLE(RX_RSS_ENABLE),
     .RX_HASH_ENABLE(RX_HASH_ENABLE),
@@ -637,6 +850,7 @@ mqnic_core #(
     .RX_RAM_SIZE(RX_RAM_SIZE),
 
     // Application block configuration
+    .APP_ID(APP_ID),
     .APP_ENABLE(APP_ENABLE),
     .APP_CTRL_ENABLE(APP_CTRL_ENABLE),
     .APP_DMA_ENABLE(APP_DMA_ENABLE),
@@ -647,6 +861,8 @@ mqnic_core #(
 
     // DMA interface configuration
     .DMA_ADDR_WIDTH(DMA_ADDR_WIDTH),
+    .DMA_IMM_ENABLE(DMA_IMM_ENABLE),
+    .DMA_IMM_WIDTH(DMA_IMM_WIDTH),
     .DMA_LEN_WIDTH(DMA_LEN_WIDTH),
     .DMA_TAG_WIDTH(DMA_TAG_WIDTH),
     .RAM_SEG_COUNT(RAM_SEG_COUNT),
@@ -721,6 +937,8 @@ core_inst (
     .m_axis_dma_write_desc_dma_addr(dma_write_desc_dma_addr),
     .m_axis_dma_write_desc_ram_sel(dma_write_desc_ram_sel),
     .m_axis_dma_write_desc_ram_addr(dma_write_desc_ram_addr),
+    .m_axis_dma_write_desc_imm(dma_write_desc_imm),
+    .m_axis_dma_write_desc_imm_en(dma_write_desc_imm_en),
     .m_axis_dma_write_desc_len(dma_write_desc_len),
     .m_axis_dma_write_desc_tag(dma_write_desc_tag),
     .m_axis_dma_write_desc_valid(dma_write_desc_valid),
@@ -843,10 +1061,15 @@ core_inst (
     /*
      * PTP clock
      */
+    .ptp_clk(ptp_clk),
+    .ptp_rst(ptp_rst),
     .ptp_sample_clk(ptp_sample_clk),
     .ptp_pps(ptp_pps),
     .ptp_ts_96(ptp_ts_96),
     .ptp_ts_step(ptp_ts_step),
+    .ptp_sync_pps(ptp_sync_pps),
+    .ptp_sync_ts_96(ptp_sync_ts_96),
+    .ptp_sync_ts_step(ptp_sync_ts_step),
     .ptp_perout_locked(ptp_perout_locked),
     .ptp_perout_error(ptp_perout_error),
     .ptp_perout_pulse(ptp_perout_pulse),
@@ -867,10 +1090,12 @@ core_inst (
     .m_axis_tx_tlast(m_axis_tx_tlast),
     .m_axis_tx_tuser(m_axis_tx_tuser),
 
-    .s_axis_tx_ptp_ts(s_axis_tx_ptp_ts),
-    .s_axis_tx_ptp_ts_tag(s_axis_tx_ptp_ts_tag),
-    .s_axis_tx_ptp_ts_valid(s_axis_tx_ptp_ts_valid),
-    .s_axis_tx_ptp_ts_ready(s_axis_tx_ptp_ts_ready),
+    .s_axis_tx_cpl_ts(s_axis_tx_cpl_ts),
+    .s_axis_tx_cpl_tag(s_axis_tx_cpl_tag),
+    .s_axis_tx_cpl_valid(s_axis_tx_cpl_valid),
+    .s_axis_tx_cpl_ready(s_axis_tx_cpl_ready),
+
+    .tx_status(tx_status),
 
     .rx_clk(rx_clk),
     .rx_rst(rx_rst),
@@ -887,13 +1112,15 @@ core_inst (
     .s_axis_rx_tlast(s_axis_rx_tlast),
     .s_axis_rx_tuser(s_axis_rx_tuser),
 
+    .rx_status(rx_status),
+
     /*
      * Statistics input
      */
-    .s_axis_stat_tdata(s_axis_stat_tdata),
-    .s_axis_stat_tid(s_axis_stat_tid),
-    .s_axis_stat_tvalid(s_axis_stat_tvalid),
-    .s_axis_stat_tready(s_axis_stat_tready),
+    .s_axis_stat_tdata(axis_stat_tdata),
+    .s_axis_stat_tid(axis_stat_tid),
+    .s_axis_stat_tvalid(axis_stat_tvalid),
+    .s_axis_stat_tready(axis_stat_tready),
 
     /*
      * GPIO

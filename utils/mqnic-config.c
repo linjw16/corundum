@@ -50,7 +50,7 @@ either expressed or implied, of The Regents of the University of California.
 
 #include "timespec.h"
 
-#include "mqnic.h"
+#include <mqnic/mqnic.h>
 
 #define NSEC_PER_SEC 1000000000
 
@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
     int port = 0;
     int sched_block = 0;
 
-    struct reg_block *rb;
+    struct mqnic_reg_block *rb;
 
     struct timespec ts_now;
     struct timespec ts_start;
@@ -152,20 +152,7 @@ int main(int argc, char *argv[])
             printf("PCIe ID: %s\n", ptr+1);
     }
 
-    printf("FPGA ID: 0x%08x\n", dev->fpga_id);
-    printf("FW ID: 0x%08x\n", dev->fw_id);
-    printf("FW version: %d.%d.%d.%d\n", dev->fw_ver >> 24,
-            (dev->fw_ver >> 16) & 0xff,
-            (dev->fw_ver >> 8) & 0xff,
-            dev->fw_ver & 0xff);
-    printf("Board ID: 0x%08x\n", dev->board_id);
-    printf("Board version: %d.%d.%d.%d\n", dev->board_ver >> 24,
-            (dev->board_ver >> 16) & 0xff,
-            (dev->board_ver >> 8) & 0xff,
-            dev->board_ver & 0xff);
-    printf("Build date: %s UTC (raw 0x%08x)\n", dev->build_date_str, dev->build_date);
-    printf("Git hash: %08x\n", dev->git_hash);
-    printf("Release info: %08x\n", dev->rel_info);
+    mqnic_print_fw_id(dev);
 
     if (!dev->phc_rb)
     {
@@ -239,7 +226,7 @@ int main(int argc, char *argv[])
     
     printf("Sched count: %d\n", dev_sched_block->sched_count);
 
-    rb = find_reg_block(dev_sched_block->rb_list, MQNIC_RB_TDMA_SCH_TYPE, MQNIC_RB_TDMA_SCH_VER, 0);
+    rb = mqnic_find_reg_block(dev_sched_block->rb_list, MQNIC_RB_TDMA_SCH_TYPE, MQNIC_RB_TDMA_SCH_VER, 0);
 
     if (dev->phc_rb && rb)
     {

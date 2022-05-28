@@ -120,13 +120,11 @@ reg [DATA_WIDTH-1:0] m_axis_tdata_reg = {DATA_WIDTH{1'b0}}, m_axis_tdata_next;
 reg [KEEP_WIDTH-1:0] m_axis_tkeep_reg = {KEEP_WIDTH{1'b0}}, m_axis_tkeep_next;
 reg m_axis_tvalid_reg = 1'b0, m_axis_tvalid_next;
 reg m_axis_tlast_reg = 1'b0, m_axis_tlast_next;
-reg m_axis_tuser_reg = 1'b0, m_axis_tuser_next;
+reg [USER_WIDTH-1:0] m_axis_tuser_reg = {USER_WIDTH{1'b0}}, m_axis_tuser_next;
 
 reg start_packet_reg = 1'b0, start_packet_next;
 reg error_bad_frame_reg = 1'b0, error_bad_frame_next;
 reg error_bad_fcs_reg = 1'b0, error_bad_fcs_next;
-
-reg [PTP_TS_WIDTH-1:0] ptp_ts_reg = 0, ptp_ts_next;
 
 reg [31:0] crc_state = 32'hFFFFFFFF;
 
@@ -149,7 +147,7 @@ assign m_axis_tdata = m_axis_tdata_reg;
 assign m_axis_tkeep = m_axis_tkeep_reg;
 assign m_axis_tvalid = m_axis_tvalid_reg;
 assign m_axis_tlast = m_axis_tlast_reg;
-assign m_axis_tuser = PTP_TS_ENABLE ? {ptp_ts_reg, m_axis_tuser_reg} : m_axis_tuser_reg;
+assign m_axis_tuser = m_axis_tuser_reg;
 
 assign start_packet = start_packet_reg;
 assign error_bad_frame = error_bad_frame_reg;
@@ -272,13 +270,12 @@ always @* begin
     m_axis_tkeep_next = {KEEP_WIDTH{1'b1}};
     m_axis_tvalid_next = 1'b0;
     m_axis_tlast_next = 1'b0;
-    m_axis_tuser_next = 1'b0;
+    m_axis_tuser_next = m_axis_tuser_reg;
+    m_axis_tuser_next[0] = 1'b0;
 
     start_packet_next = 1'b0;
     error_bad_frame_next = 1'b0;
     error_bad_fcs_next = 1'b0;
-
-    ptp_ts_next = ptp_ts_reg;
 
     case (state_reg)
         STATE_IDLE: begin
@@ -293,7 +290,7 @@ always @* begin
                     m_axis_tkeep_next = 4'h1;
                     m_axis_tvalid_next = 1'b1;
                     m_axis_tlast_next = 1'b1;
-                    m_axis_tuser_next = 1'b1;
+                    m_axis_tuser_next[0] = 1'b1;
                     error_bad_frame_next = 1'b1;
                     state_next = STATE_IDLE;
                 end else begin
@@ -301,12 +298,14 @@ always @* begin
                     state_next = STATE_PREAMBLE;
                 end
             end else begin
+                if (PTP_TS_ENABLE) begin
+                    m_axis_tuser_next[1 +: PTP_TS_WIDTH] = ptp_ts;
+                end
                 state_next = STATE_IDLE;
             end
         end
         STATE_PREAMBLE: begin
             // drop preamble
-            ptp_ts_next = ptp_ts;
             start_packet_next = 1'b1;
             state_next = STATE_PAYLOAD;
         end
@@ -316,14 +315,14 @@ always @* begin
             m_axis_tkeep_next = {KEEP_WIDTH{1'b1}};
             m_axis_tvalid_next = 1'b1;
             m_axis_tlast_next = 1'b0;
-            m_axis_tuser_next = 1'b0;
+            m_axis_tuser_next[0] = 1'b0;
 
             last_cycle_tkeep_next = tkeep_mask;
 
             if (control_masked) begin
                 // control or error characters in packet
                 m_axis_tlast_next = 1'b1;
-                m_axis_tuser_next = 1'b1;
+                m_axis_tuser_next[0] = 1'b1;
                 error_bad_frame_next = 1'b1;
                 reset_crc = 1'b1;
                 state_next = STATE_IDLE;
@@ -336,7 +335,7 @@ always @* begin
                     if (detect_term[0] && crc_valid3_save) begin
                         // CRC valid
                     end else begin
-                        m_axis_tuser_next = 1'b1;
+                        m_axis_tuser_next[0] = 1'b1;
                         error_bad_frame_next = 1'b1;
                         error_bad_fcs_next = 1'b1;
                     end
@@ -355,7 +354,7 @@ always @* begin
             m_axis_tkeep_next = last_cycle_tkeep_reg;
             m_axis_tvalid_next = 1'b1;
             m_axis_tlast_next = 1'b1;
-            m_axis_tuser_next = 1'b0;
+            m_axis_tuser_next[0] = 1'b0;
 
             reset_crc = 1'b1;
 
@@ -364,7 +363,7 @@ always @* begin
                 (detect_term_save[3] && crc_valid2_save)) begin
                 // CRC valid
             end else begin
-                m_axis_tuser_next = 1'b1;
+                m_axis_tuser_next[0] = 1'b1;
                 error_bad_frame_next = 1'b1;
                 error_bad_fcs_next = 1'b1;
             end
@@ -386,8 +385,6 @@ always @(posedge clk) begin
     start_packet_reg <= start_packet_next;
     error_bad_frame_reg <= error_bad_frame_next;
     error_bad_fcs_reg <= error_bad_fcs_next;
-
-    ptp_ts_reg <= ptp_ts_next;
 
     last_cycle_tkeep_reg <= last_cycle_tkeep_next;
 

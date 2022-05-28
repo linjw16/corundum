@@ -59,6 +59,13 @@ MODULE_PARM_DESC(num_tx_queue_entries, "number of entries to allocate per transm
 module_param_named(num_rx_queue_entries, mqnic_num_rx_queue_entries, uint, 0444);
 MODULE_PARM_DESC(num_rx_queue_entries, "number of entries to allocate per receive queue (default: 1024)");
 
+unsigned int mqnic_link_status_poll = MQNIC_LINK_STATUS_POLL_MS;
+
+module_param_named(link_status_poll, mqnic_link_status_poll, uint, 0444);
+MODULE_PARM_DESC(link_status_poll,
+		 "link status polling interval, in ms (default: 1000; 0 to turn off)");
+
+
 #ifdef CONFIG_PCI
 static const struct pci_device_id mqnic_pci_id_table[] = {
 	{PCI_DEVICE(0x1234, 0x1001)},
@@ -244,29 +251,42 @@ static int mqnic_platform_module_eeprom_get(struct mqnic_dev *mqnic)
 }
 #endif
 
+static void mqnic_common_remove(struct mqnic_dev *mqnic);
+
+#ifdef CONFIG_AUXILIARY_BUS
+static void mqnic_adev_release(struct device *dev)
+{
+	struct mqnic_adev *mqnic_adev = container_of(dev, struct mqnic_adev, adev.dev);
+
+	if (mqnic_adev->ptr)
+		*mqnic_adev->ptr = NULL;
+	kfree(mqnic_adev);
+}
+#endif
+
 static int mqnic_common_probe(struct mqnic_dev *mqnic)
 {
 	int ret = 0;
 	struct device *dev = mqnic->dev;
-	struct reg_block *rb;
+	struct mqnic_reg_block *rb;
 	struct rtc_time tm;
 
 	int k = 0, l = 0;
 
 	// Enumerate registers
-	mqnic->rb_list = enumerate_reg_block_list(mqnic->hw_addr, 0, mqnic->hw_regs_size);
+	mqnic->rb_list = mqnic_enumerate_reg_block_list(mqnic->hw_addr, 0, mqnic->hw_regs_size);
 	if (!mqnic->rb_list) {
 		dev_err(dev, "Failed to enumerate blocks");
 		return -EIO;
 	}
 
 	dev_info(dev, "Device-level register blocks:");
-	for (rb = mqnic->rb_list; rb->type && rb->version; rb++)
-		dev_info(dev, " type 0x%08x (v %d.%d.%d.%d)", rb->type, rb->version >> 24, 
+	for (rb = mqnic->rb_list; rb->regs; rb++)
+		dev_info(dev, " type 0x%08x (v %d.%d.%d.%d)", rb->type, rb->version >> 24,
 				(rb->version >> 16) & 0xff, (rb->version >> 8) & 0xff, rb->version & 0xff);
 
 	// Read ID registers
-	mqnic->fw_id_rb = find_reg_block(mqnic->rb_list, MQNIC_RB_FW_ID_TYPE, MQNIC_RB_FW_ID_VER, 0);
+	mqnic->fw_id_rb = mqnic_find_reg_block(mqnic->rb_list, MQNIC_RB_FW_ID_TYPE, MQNIC_RB_FW_ID_VER, 0);
 
 	if (!mqnic->fw_id_rb) {
 		ret = -EIO;
@@ -306,10 +326,17 @@ static int mqnic_common_probe(struct mqnic_dev *mqnic)
 	dev_info(dev, "Git hash: %08x", mqnic->git_hash);
 	dev_info(dev, "Release info: %08x", mqnic->rel_info);
 
-	mqnic->phc_rb = find_reg_block(mqnic->rb_list, MQNIC_RB_PHC_TYPE, MQNIC_RB_PHC_VER, 0);
+	rb = mqnic_find_reg_block(mqnic->rb_list, MQNIC_RB_APP_INFO_TYPE, MQNIC_RB_APP_INFO_VER, 0);
+
+	if (rb) {
+		mqnic->app_id = ioread32(rb->regs + MQNIC_RB_APP_INFO_REG_ID);
+		dev_info(dev, "Application ID: 0x%08x", mqnic->app_id);
+	}
+
+	mqnic->phc_rb = mqnic_find_reg_block(mqnic->rb_list, MQNIC_RB_PHC_TYPE, MQNIC_RB_PHC_VER, 0);
 
 	// Enumerate interfaces
-	mqnic->if_rb = find_reg_block(mqnic->rb_list, MQNIC_RB_IF_TYPE, MQNIC_RB_IF_VER, 0);
+	mqnic->if_rb = mqnic_find_reg_block(mqnic->rb_list, MQNIC_RB_IF_TYPE, MQNIC_RB_IF_VER, 0);
 
 	if (!mqnic->if_rb) {
 		ret = -EIO;
@@ -387,6 +414,7 @@ static int mqnic_common_probe(struct mqnic_dev *mqnic)
 		}
 	}
 
+fail_create_if:
 	mqnic->misc_dev.minor = MISC_DYNAMIC_MINOR;
 	mqnic->misc_dev.name = mqnic->name;
 	mqnic->misc_dev.fops = &mqnic_fops;
@@ -394,28 +422,61 @@ static int mqnic_common_probe(struct mqnic_dev *mqnic)
 
 	ret = misc_register(&mqnic->misc_dev);
 	if (ret) {
+		mqnic->misc_dev.this_device = NULL;
 		dev_err(dev, "misc_register failed: %d\n", ret);
 		goto fail_miscdev;
 	}
 
 	dev_info(dev, "Registered device %s", mqnic->name);
 
+#ifdef CONFIG_AUXILIARY_BUS
+	if (mqnic->app_id) {
+		mqnic->app_adev = kzalloc(sizeof(*mqnic->app_adev), GFP_KERNEL);
+		if (!mqnic->app_adev) {
+			ret = -ENOMEM;
+			goto fail_adev;
+		}
+
+		snprintf(mqnic->app_adev->name, sizeof(mqnic->app_adev->name), "app_%08x", mqnic->app_id);
+
+		mqnic->app_adev->adev.id = mqnic->id;
+		mqnic->app_adev->adev.name = mqnic->app_adev->name;
+		mqnic->app_adev->adev.dev.parent = dev;
+		mqnic->app_adev->adev.dev.release = mqnic_adev_release;
+		mqnic->app_adev->mdev = mqnic;
+		mqnic->app_adev->ptr = &mqnic->app_adev;
+
+		ret = auxiliary_device_init(&mqnic->app_adev->adev);
+		if (ret) {
+			kfree(mqnic->app_adev);
+			mqnic->app_adev = NULL;
+			goto fail_adev;
+		}
+
+		ret = auxiliary_device_add(&mqnic->app_adev->adev);
+		if (ret) {
+			auxiliary_device_uninit(&mqnic->app_adev->adev);
+			mqnic->app_adev = NULL;
+			goto fail_adev;
+		}
+
+		dev_info(dev, "Registered auxiliary bus device " DRIVER_NAME ".%s.%d",
+				mqnic->app_adev->adev.name, mqnic->app_adev->adev.id);
+	}
+#endif
+
 	// probe complete
 	return 0;
 
 	// error handling
+#ifdef CONFIG_AUXILIARY_BUS
+fail_adev:
+#endif
 fail_miscdev:
-fail_create_if:
-	for (k = 0; k < ARRAY_SIZE(mqnic->interface); k++)
-		if (mqnic->interface[k])
-			mqnic_destroy_interface(&mqnic->interface[k]);
-
-	mqnic_unregister_phc(mqnic);
-	mqnic_board_deinit(mqnic);
 fail_board:
 fail_bar_size:
 fail_rb_init:
-	free_reg_block_list(mqnic->rb_list);
+	mqnic_common_remove(mqnic);
 	return ret;
 }
 
@@ -423,7 +484,15 @@ static void mqnic_common_remove(struct mqnic_dev *mqnic)
 {
 	int k = 0;
 
-	misc_deregister(&mqnic->misc_dev);
+#ifdef CONFIG_AUXILIARY_BUS
+	if (mqnic->app_adev) {
+		auxiliary_device_delete(&mqnic->app_adev->adev);
+		auxiliary_device_uninit(&mqnic->app_adev->adev);
+	}
+#endif
+
+	if (mqnic->misc_dev.this_device)
+		misc_deregister(&mqnic->misc_dev);
 
 	for (k = 0; k < ARRAY_SIZE(mqnic->interface); k++)
 		if (mqnic->interface[k])
@@ -437,7 +506,8 @@ static void mqnic_common_remove(struct mqnic_dev *mqnic)
 	} else {
 		mqnic_board_deinit(mqnic);
 	}
-	free_reg_block_list(mqnic->rb_list);
+	if (mqnic->rb_list)
+		mqnic_free_reg_block_list(mqnic->rb_list);
 }
 
 #ifdef CONFIG_PCI

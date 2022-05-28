@@ -36,7 +36,7 @@
 #include "mqnic.h"
 
 int mqnic_create_scheduler(struct mqnic_sched_block *block, struct mqnic_sched **sched_ptr,
-		int index, struct reg_block *rb)
+		int index, struct mqnic_reg_block *rb)
 {
 	struct device *dev = block->dev;
 	struct mqnic_sched *sched;
@@ -95,9 +95,11 @@ int mqnic_scheduler_enable(struct mqnic_sched *sched)
 
 	return 0;
 }
+EXPORT_SYMBOL(mqnic_scheduler_enable);
 
 void mqnic_scheduler_disable(struct mqnic_sched *sched)
 {
 	// disable scheduler
 	iowrite32(0, sched->rb->regs + MQNIC_RB_SCHED_RR_REG_CTRL);
 }
+EXPORT_SYMBOL(mqnic_scheduler_disable);

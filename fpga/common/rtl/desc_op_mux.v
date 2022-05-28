@@ -150,6 +150,12 @@ wire [PORTS-1:0] grant;
 wire grant_valid;
 wire [CL_PORTS-1:0] grant_encoded;
 
+// input registers to pipeline arbitration delay
+reg [PORTS*SELECT_WIDTH-1:0]      s_axis_req_sel_reg = 0;
+reg [PORTS*QUEUE_INDEX_WIDTH-1:0] s_axis_req_queue_reg = 0;
+reg [PORTS*S_REQ_TAG_WIDTH-1:0]   s_axis_req_tag_reg = 0;
+reg [PORTS-1:0]                   s_axis_req_valid_reg = 0;
+
 // internal datapath
 reg  [SELECT_WIDTH-1:0]      m_axis_req_sel_int;
 reg  [QUEUE_INDEX_WIDTH-1:0] m_axis_req_queue_int;
@@ -158,13 +164,13 @@ reg                          m_axis_req_valid_int;
 reg                          m_axis_req_ready_int_reg = 1'b0;
 wire                         m_axis_req_ready_int_early;
 
-assign s_axis_req_ready = (m_axis_req_ready_int_reg && grant_valid) << grant_encoded;
+assign s_axis_req_ready = ~s_axis_req_valid_reg | ({PORTS{m_axis_req_ready_int_reg}} & grant);
 
 // mux for incoming packet
-wire [SELECT_WIDTH-1:0]      current_s_desc_sel   = s_axis_req_sel[grant_encoded*SELECT_WIDTH +: SELECT_WIDTH];
-wire [QUEUE_INDEX_WIDTH-1:0] current_s_desc_queue = s_axis_req_queue[grant_encoded*QUEUE_INDEX_WIDTH +: QUEUE_INDEX_WIDTH];
-wire [S_REQ_TAG_WIDTH-1:0]   current_s_desc_tag   = s_axis_req_tag[grant_encoded*S_REQ_TAG_WIDTH +: S_REQ_TAG_WIDTH];
-wire                         current_s_desc_valid = s_axis_req_valid[grant_encoded];
+wire [SELECT_WIDTH-1:0]      current_s_desc_sel   = s_axis_req_sel_reg[grant_encoded*SELECT_WIDTH +: SELECT_WIDTH];
+wire [QUEUE_INDEX_WIDTH-1:0] current_s_desc_queue = s_axis_req_queue_reg[grant_encoded*QUEUE_INDEX_WIDTH +: QUEUE_INDEX_WIDTH];
+wire [S_REQ_TAG_WIDTH-1:0]   current_s_desc_tag   = s_axis_req_tag_reg[grant_encoded*S_REQ_TAG_WIDTH +: S_REQ_TAG_WIDTH];
+wire                         current_s_desc_valid = s_axis_req_valid_reg[grant_encoded];
 wire                         current_s_desc_ready = s_axis_req_ready[grant_encoded];
 
 // arbiter instance
@@ -185,8 +191,8 @@ arb_inst (
     .grant_encoded(grant_encoded)
 );
 
-assign request = s_axis_req_valid & ~grant;
-assign acknowledge = grant & s_axis_req_valid & s_axis_req_ready;
+assign request = (s_axis_req_valid_reg & ~grant) | (s_axis_req_valid & grant);
+assign acknowledge = grant & s_axis_req_valid_reg & {PORTS{m_axis_req_ready_int_reg}};
 
 always @* begin
     // pass through selected packet data
@@ -194,6 +200,24 @@ always @* begin
     m_axis_req_queue_int = current_s_desc_queue;
     m_axis_req_tag_int   = {grant_encoded, current_s_desc_tag};
     m_axis_req_valid_int = current_s_desc_valid && m_axis_req_ready_int_reg && grant_valid;
+end
+
+integer i;
+
+always @(posedge clk) begin
+    // register inputs
+    for (i = 0; i < PORTS; i = i + 1) begin
+        if (s_axis_req_ready[i]) begin
+            s_axis_req_sel_reg[i*SELECT_WIDTH +: SELECT_WIDTH] <= s_axis_req_sel[i*SELECT_WIDTH +: SELECT_WIDTH];
+            s_axis_req_queue_reg[i*QUEUE_INDEX_WIDTH +: QUEUE_INDEX_WIDTH] <= s_axis_req_queue[i*QUEUE_INDEX_WIDTH +: QUEUE_INDEX_WIDTH];
+            s_axis_req_tag_reg[i*S_REQ_TAG_WIDTH +: S_REQ_TAG_WIDTH] <= s_axis_req_tag[i*S_REQ_TAG_WIDTH +: S_REQ_TAG_WIDTH];
+            s_axis_req_valid_reg[i] <= s_axis_req_valid[i];
+       end
+    end
+
+    if (rst) begin
+        s_axis_req_valid_reg <= 0;
+    end
 end
 
 // output datapath logic
@@ -217,8 +241,8 @@ assign m_axis_req_queue = m_axis_req_queue_reg;
 assign m_axis_req_tag   = m_axis_req_tag_reg;
 assign m_axis_req_valid = m_axis_req_valid_reg;
 
-// enable ready input next cycle if output is ready or the temp reg will not be filled on the next cycle (output reg empty or no input)
-assign m_axis_req_ready_int_early = m_axis_req_ready || (!temp_m_axis_req_valid_reg && (!m_axis_req_valid_reg || !m_axis_req_valid_int));
+// enable ready input next cycle if output is ready or if both output registers are empty
+assign m_axis_req_ready_int_early = m_axis_req_ready || (!temp_m_axis_req_valid_reg && !m_axis_req_valid_reg);
 
 always @* begin
     // transfer sink ready state to source
@@ -249,15 +273,9 @@ always @* begin
 end
 
 always @(posedge clk) begin
-    if (rst) begin
-        m_axis_req_valid_reg <= 1'b0;
-        m_axis_req_ready_int_reg <= 1'b0;
-        temp_m_axis_req_valid_reg <= 1'b0;
-    end else begin
-        m_axis_req_valid_reg <= m_axis_req_valid_next;
-        m_axis_req_ready_int_reg <= m_axis_req_ready_int_early;
-        temp_m_axis_req_valid_reg <= temp_m_axis_req_valid_next;
-    end
+    m_axis_req_valid_reg <= m_axis_req_valid_next;
+    m_axis_req_ready_int_reg <= m_axis_req_ready_int_early;
+    temp_m_axis_req_valid_reg <= temp_m_axis_req_valid_next;
 
     // datapath
     if (store_axis_int_to_output) begin
@@ -274,6 +292,12 @@ always @(posedge clk) begin
         temp_m_axis_req_sel_reg <= m_axis_req_sel_int;
         temp_m_axis_req_queue_reg <= m_axis_req_queue_int;
         temp_m_axis_req_tag_reg <= m_axis_req_tag_int;
+    end
+
+    if (rst) begin
+        m_axis_req_valid_reg <= 1'b0;
+        m_axis_req_ready_int_reg <= 1'b0;
+        temp_m_axis_req_valid_reg <= 1'b0;
     end
 end
 
@@ -305,18 +329,17 @@ always @* begin
 end
 
 always @(posedge clk) begin
-    if (rst) begin
-        m_axis_req_status_valid_reg <= {PORTS{1'b0}};
-    end else begin
-        m_axis_req_status_valid_reg <= m_axis_req_status_valid_next;
-    end
-
     m_axis_req_status_queue_reg <= m_axis_req_status_queue_next;
     m_axis_req_status_ptr_reg <= m_axis_req_status_ptr_next;
     m_axis_req_status_cpl_reg <= m_axis_req_status_cpl_next;
     m_axis_req_status_tag_reg <= m_axis_req_status_tag_next;
     m_axis_req_status_empty_reg <= m_axis_req_status_empty_next;
     m_axis_req_status_error_reg <= m_axis_req_status_error_next;
+    m_axis_req_status_valid_reg <= m_axis_req_status_valid_next;
+
+    if (rst) begin
+        m_axis_req_status_valid_reg <= {PORTS{1'b0}};
+    end
 end
 
 // descriptor data demux
@@ -369,8 +392,8 @@ assign m_axis_desc_tid    = {PORTS{m_axis_desc_tid_reg}};
 assign m_axis_desc_tuser  = {PORTS{m_axis_desc_tuser_reg}};
 assign m_axis_desc_tvalid = m_axis_desc_tvalid_reg;
 
-// enable ready input next cycle if output is ready or the temp reg will not be filled on the next cycle (output reg empty or no input)
-assign m_axis_desc_tready_int_early = (m_axis_desc_tready & m_axis_desc_tvalid) || (!temp_m_axis_desc_tvalid_reg && (!m_axis_desc_tvalid || !m_axis_desc_tvalid_int));
+// enable ready input next cycle if output is ready or if both output registers are empty
+assign m_axis_desc_tready_int_early = (m_axis_desc_tready & m_axis_desc_tvalid) || (!temp_m_axis_desc_tvalid_reg && !m_axis_desc_tvalid_reg);
 
 always @* begin
     // transfer sink ready state to source
@@ -401,15 +424,9 @@ always @* begin
 end
 
 always @(posedge clk) begin
-    if (rst) begin
-        m_axis_desc_tvalid_reg <= {PORTS{1'b0}};
-        m_axis_desc_tready_int_reg <= 1'b0;
-        temp_m_axis_desc_tvalid_reg <= {PORTS{1'b0}};
-    end else begin
-        m_axis_desc_tvalid_reg <= m_axis_desc_tvalid_next;
-        m_axis_desc_tready_int_reg <= m_axis_desc_tready_int_early;
-        temp_m_axis_desc_tvalid_reg <= temp_m_axis_desc_tvalid_next;
-    end
+    m_axis_desc_tvalid_reg <= m_axis_desc_tvalid_next;
+    m_axis_desc_tready_int_reg <= m_axis_desc_tready_int_early;
+    temp_m_axis_desc_tvalid_reg <= temp_m_axis_desc_tvalid_next;
 
     // datapath
     if (store_axis_req_int_to_output) begin
@@ -432,6 +449,12 @@ always @(posedge clk) begin
         temp_m_axis_desc_tlast_reg <= m_axis_desc_tlast_int;
         temp_m_axis_desc_tid_reg <= m_axis_desc_tid_int;
         temp_m_axis_desc_tuser_reg <= m_axis_desc_tuser_int;
+    end
+
+    if (rst) begin
+        m_axis_desc_tvalid_reg <= {PORTS{1'b0}};
+        m_axis_desc_tready_int_reg <= 1'b0;
+        temp_m_axis_desc_tvalid_reg <= {PORTS{1'b0}};
     end
 end
 
