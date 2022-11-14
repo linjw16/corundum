@@ -89,6 +89,10 @@ dict set params PORTS_PER_IF "1"
 dict set params SCHED_PER_IF [dict get $params PORTS_PER_IF]
 dict set params PORT_MASK "0"
 
+# Clock configuration
+dict set params CLK_PERIOD_NS_NUM "4"
+dict set params CLK_PERIOD_NS_DENOM "1"
+
 # PTP configuration
 dict set params PTP_CLOCK_PIPELINE "0"
 dict set params PTP_CLOCK_CDC_PIPELINE "0"
@@ -135,6 +139,12 @@ dict set params MAX_TX_SIZE "9214"
 dict set params MAX_RX_SIZE "9214"
 dict set params TX_RAM_SIZE "32768"
 dict set params RX_RAM_SIZE "32768"
+
+# RAM configuration
+dict set params DDR_CH "1"
+dict set params DDR_ENABLE "0"
+dict set params AXI_DDR_ID_WIDTH "8"
+dict set params AXI_DDR_MAX_BURST_LEN "256"
  
 # Application block configuration
 dict set params APP_ID "32'h00000000"
@@ -158,15 +168,16 @@ dict set params RAM_PIPELINE "2"
 dict set params PCIE_TAG_COUNT "64"
 dict set params PCIE_DMA_READ_OP_TABLE_SIZE [dict get $params PCIE_TAG_COUNT]
 dict set params PCIE_DMA_READ_TX_LIMIT "8"
-dict set params PCIE_DMA_READ_TX_FC_ENABLE "1"
 dict set params PCIE_DMA_WRITE_OP_TABLE_SIZE "8"
 dict set params PCIE_DMA_WRITE_TX_LIMIT "3"
-dict set params PCIE_DMA_WRITE_TX_FC_ENABLE "1"
+
+# Interrupt configuration
+dict set params IRQ_INDEX_WIDTH [dict get $params EVENT_QUEUE_INDEX_WIDTH]
 
 # AXI lite interface configuration (control)
 dict set params AXIL_CTRL_DATA_WIDTH "32"
 dict set params AXIL_CTRL_ADDR_WIDTH "24"
- 
+
 # AXI lite interface configuration (application control)
 dict set params AXIL_APP_CTRL_DATA_WIDTH [dict get $params AXIL_CTRL_DATA_WIDTH]
 dict set params AXIL_APP_CTRL_ADDR_WIDTH "24"
@@ -185,6 +196,19 @@ dict set params STAT_PCIE_ENABLE "1"
 dict set params STAT_INC_WIDTH "24"
 dict set params STAT_ID_WIDTH "10"
 
+# DDR4 MIG settings
+if {[dict get $params DDR_ENABLE]} {
+    set ddr4 [get_ips ddr4_0]
+
+    # set AXI ID width
+    set_property CONFIG.C0.DDR4_AxiIDWidth [dict get $params AXI_DDR_ID_WIDTH] $ddr4
+
+    # extract AXI configuration
+    dict set params AXI_DDR_DATA_WIDTH [get_property CONFIG.C0.DDR4_AxiDataWidth $ddr4]
+    dict set params AXI_DDR_ADDR_WIDTH [get_property CONFIG.C0.DDR4_AxiAddressWidth $ddr4]
+    dict set params AXI_DDR_NARROW_BURST [expr [get_property CONFIG.C0.DDR4_AxiNarrowBurst $ddr4] && 1]
+}
+
 # PCIe IP core settings
 set pcie [get_ips pcie3_ultrascale_0]
 
@@ -197,6 +221,9 @@ set_property CONFIG.pf0_class_code_interface [format "%02x" [expr $pcie_class_co
 set_property CONFIG.PF0_REVISION_ID [format "%02x" $pcie_revision_id] $pcie
 set_property CONFIG.PF0_SUBSYSTEM_VENDOR_ID [format "%04x" $pcie_subsystem_vendor_id] $pcie
 set_property CONFIG.PF0_SUBSYSTEM_ID [format "%04x" $pcie_subsystem_device_id] $pcie
+
+# PCIe IP core configuration
+set_property CONFIG.PF0_MSIX_CAP_TABLE_SIZE [format "%03x" [expr 2**[dict get $params IRQ_INDEX_WIDTH]-1]] $pcie
 
 # Internal interface settings
 dict set params AXIS_PCIE_DATA_WIDTH [regexp -all -inline -- {[0-9]+} [get_property CONFIG.axisten_if_width $pcie]]

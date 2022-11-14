@@ -64,7 +64,7 @@ except ImportError:
 
 
 class TB(object):
-    def __init__(self, dut):
+    def __init__(self, dut, msix_count=32):
         self.dut = dut
 
         self.log = SimLog("cocotb.tb")
@@ -81,7 +81,43 @@ class TB(object):
             pcie_generation=3,
             # pcie_link_width=2,
             # pld_clk_frequency=250e6,
-            l_tile=False,
+            l_tile=dut.L_TILE.value,
+            pf_count=1,
+            max_payload_size=1024,
+            enable_extended_tag=True,
+
+            pf0_msi_enable=False,
+            pf0_msi_count=32,
+            pf1_msi_enable=False,
+            pf1_msi_count=1,
+            pf2_msi_enable=False,
+            pf2_msi_count=1,
+            pf3_msi_enable=False,
+            pf3_msi_count=1,
+            pf0_msix_enable=True,
+            pf0_msix_table_size=msix_count-1,
+            pf0_msix_table_bir=0,
+            pf0_msix_table_offset=0x00010000,
+            pf0_msix_pba_bir=0,
+            pf0_msix_pba_offset=0x00018000,
+            pf1_msix_enable=False,
+            pf1_msix_table_size=0,
+            pf1_msix_table_bir=0,
+            pf1_msix_table_offset=0x00000000,
+            pf1_msix_pba_bir=0,
+            pf1_msix_pba_offset=0x00000000,
+            pf2_msix_enable=False,
+            pf2_msix_table_size=0,
+            pf2_msix_table_bir=0,
+            pf2_msix_table_offset=0x00000000,
+            pf2_msix_pba_bir=0,
+            pf2_msix_pba_offset=0x00000000,
+            pf3_msix_enable=False,
+            pf3_msix_table_size=0,
+            pf3_msix_table_bir=0,
+            pf3_msix_table_offset=0x00000000,
+            pf3_msix_pba_bir=0,
+            pf3_msix_pba_offset=0x00000000,
 
             # signals
             # Clock and reset
@@ -139,11 +175,11 @@ class TB(object):
             # app_xfer_pending=dut.app_xfer_pending,
 
             # Interrupt interface
-            app_msi_req=dut.app_msi_req,
-            app_msi_ack=dut.app_msi_ack,
-            app_msi_tc=dut.app_msi_tc,
-            app_msi_num=dut.app_msi_num,
-            app_msi_func_num=dut.app_msi_func_num,
+            # app_msi_req=dut.app_msi_req,
+            # app_msi_ack=dut.app_msi_ack,
+            # app_msi_tc=dut.app_msi_tc,
+            # app_msi_num=dut.app_msi_num,
+            # app_msi_func_num=dut.app_msi_func_num,
             # app_int_sts=dut.app_int_sts,
 
             # Error interface
@@ -187,8 +223,6 @@ class TB(object):
         self.rc.make_port().connect(self.dev)
 
         self.driver = mqnic.Driver()
-
-        self.dev.functions[0].msi_cap.msi_multiple_message_capable = 5
 
         self.dev.functions[0].configure_bar(0, 2**len(dut.core_pcie_inst.axil_ctrl_araddr), ext=True, prefetch=True)
         if hasattr(dut.core_pcie_inst, 'pcie_app_ctrl'):
@@ -288,7 +322,7 @@ class TB(object):
 
         self.dut.ptp_rst.setimmediatevalue(0)
 
-        await self.rc.enumerate(enable_bus_mastering=True, configure_msi=True)
+        await self.rc.enumerate()
 
     async def _run_loopback(self):
         while True:
@@ -303,12 +337,12 @@ class TB(object):
 @cocotb.test()
 async def run_test_nic(dut):
 
-    tb = TB(dut)
+    tb = TB(dut, msix_count=2**len(dut.core_pcie_inst.irq_index))
 
     await tb.init()
 
     tb.log.info("Init driver")
-    await tb.driver.init_pcie_dev(tb.rc, tb.dev.functions[0].pcie_id)
+    await tb.driver.init_pcie_dev(tb.rc.find_device(tb.dev.functions[0].pcie_id))
     for interface in tb.driver.interfaces:
         await interface.open()
 
@@ -439,6 +473,25 @@ async def run_test_nic(dut):
 
     tb.loopback_enable = False
 
+    tb.log.info("Multiple TX queues")
+
+    count = 1024
+
+    pkts = [bytearray([(x+k) % 256 for x in range(60)]) for k in range(count)]
+
+    tb.loopback_enable = True
+
+    for k in range(len(pkts)):
+        await tb.driver.interfaces[0].start_xmit(pkts[k], k % tb.driver.interfaces[0].tx_queue_count)
+
+    for k in range(count):
+        pkt = await tb.driver.interfaces[0].recv()
+
+        tb.log.info("Packet: %s", pkt)
+        assert pkt.rx_checksum == ~scapy.utils.checksum(bytes(pkt.data[14:])) & 0xffff
+
+    tb.loopback_enable = False
+
     tb.log.info("Multiple large packets")
 
     count = 64
@@ -547,7 +600,7 @@ async def run_test_nic(dut):
     lst = []
 
     for k in range(64):
-        lst.append(await tb.driver.hw_regs.read_dword(0x010000+k*8))
+        lst.append(await tb.driver.hw_regs.read_dword(0x020000+k*8))
 
     print(lst)
 
@@ -573,9 +626,9 @@ pcie_rtl_dir = os.path.abspath(os.path.join(lib_dir, 'pcie', 'rtl'))
             (2, 1, 256, 64, 64, 1),
             (1, 2, 256, 64, 64, 1),
             (1, 1, 256, 64, 128, 1),
-            # (1, 1, 512, 64, 64, 1),
-            # (1, 1, 512, 64, 128, 1),
-            # (1, 1, 512, 512, 512, 1),
+            (1, 1, 512, 64, 64, 1),
+            (1, 1, 512, 64, 128, 1),
+            (1, 1, 512, 512, 512, 1),
         ])
 def test_mqnic_core_pcie_s10(request, if_count, ports_per_if, pcie_data_width,
         axis_eth_data_width, axis_eth_sync_data_width, ptp_ts_enable):
@@ -651,6 +704,12 @@ def test_mqnic_core_pcie_s10(request, if_count, ports_per_if, pcie_data_width,
         os.path.join(pcie_rtl_dir, "pcie_tlp_demux.v"),
         os.path.join(pcie_rtl_dir, "pcie_tlp_demux_bar.v"),
         os.path.join(pcie_rtl_dir, "pcie_tlp_mux.v"),
+        os.path.join(pcie_rtl_dir, "pcie_tlp_fc_count.v"),
+        os.path.join(pcie_rtl_dir, "pcie_tlp_fifo.v"),
+        os.path.join(pcie_rtl_dir, "pcie_tlp_fifo_raw.v"),
+        os.path.join(pcie_rtl_dir, "pcie_tlp_fifo_mux.v"),
+        os.path.join(pcie_rtl_dir, "pcie_msix.v"),
+        os.path.join(pcie_rtl_dir, "irq_rate_limit.v"),
         os.path.join(pcie_rtl_dir, "dma_if_pcie.v"),
         os.path.join(pcie_rtl_dir, "dma_if_pcie_rd.v"),
         os.path.join(pcie_rtl_dir, "dma_if_pcie_wr.v"),
@@ -667,7 +726,6 @@ def test_mqnic_core_pcie_s10(request, if_count, ports_per_if, pcie_data_width,
         os.path.join(pcie_rtl_dir, "pcie_s10_if_rx.v"),
         os.path.join(pcie_rtl_dir, "pcie_s10_if_tx.v"),
         os.path.join(pcie_rtl_dir, "pcie_s10_cfg.v"),
-        os.path.join(pcie_rtl_dir, "pcie_s10_msi.v"),
         os.path.join(pcie_rtl_dir, "pulse_merge.v"),
     ]
 
@@ -678,12 +736,17 @@ def test_mqnic_core_pcie_s10(request, if_count, ports_per_if, pcie_data_width,
     parameters['PORTS_PER_IF'] = ports_per_if
     parameters['SCHED_PER_IF'] = ports_per_if
 
+    # Clock configuration
+    parameters['CLK_PERIOD_NS_NUM'] = 4
+    parameters['CLK_PERIOD_NS_DENOM'] = 1
+
     # PTP configuration
     parameters['PTP_CLK_PERIOD_NS_NUM'] = 32
     parameters['PTP_CLK_PERIOD_NS_DENOM'] = 5
     parameters['PTP_CLOCK_PIPELINE'] = 0
     parameters['PTP_CLOCK_CDC_PIPELINE'] = 0
     parameters['PTP_USE_SAMPLE_CLOCK'] = 1
+    parameters['PTP_SEPARATE_TX_CLOCK'] = 0
     parameters['PTP_SEPARATE_RX_CLOCK'] = 0
     parameters['PTP_PORT_CDC_PIPELINE'] = 0
     parameters['PTP_PEROUT_ENABLE'] = 0
@@ -695,7 +758,7 @@ def test_mqnic_core_pcie_s10(request, if_count, ports_per_if, pcie_data_width,
     parameters['RX_QUEUE_OP_TABLE_SIZE'] = 32
     parameters['TX_CPL_QUEUE_OP_TABLE_SIZE'] = parameters['TX_QUEUE_OP_TABLE_SIZE']
     parameters['RX_CPL_QUEUE_OP_TABLE_SIZE'] = parameters['RX_QUEUE_OP_TABLE_SIZE']
-    parameters['EVENT_QUEUE_INDEX_WIDTH'] = 5
+    parameters['EVENT_QUEUE_INDEX_WIDTH'] = 6
     parameters['TX_QUEUE_INDEX_WIDTH'] = 13
     parameters['RX_QUEUE_INDEX_WIDTH'] = 8
     parameters['TX_CPL_QUEUE_INDEX_WIDTH'] = parameters['TX_QUEUE_INDEX_WIDTH']
@@ -721,7 +784,6 @@ def test_mqnic_core_pcie_s10(request, if_count, ports_per_if, pcie_data_width,
     parameters['TX_CPL_FIFO_DEPTH'] = 32
     parameters['TX_TAG_WIDTH'] = 16
     parameters['TX_CHECKSUM_ENABLE'] = 1
-    parameters['RX_RSS_ENABLE'] = 1
     parameters['RX_HASH_ENABLE'] = 1
     parameters['RX_CHECKSUM_ENABLE'] = 1
     parameters['TX_FIFO_DEPTH'] = 32768
@@ -761,11 +823,11 @@ def test_mqnic_core_pcie_s10(request, if_count, ports_per_if, pcie_data_width,
     parameters['PCIE_TAG_COUNT'] = 256
     parameters['PCIE_DMA_READ_OP_TABLE_SIZE'] = parameters['PCIE_TAG_COUNT']
     parameters['PCIE_DMA_READ_TX_LIMIT'] = 2**parameters['TX_SEQ_NUM_WIDTH']
-    parameters['PCIE_DMA_READ_TX_FC_ENABLE'] = 1
     parameters['PCIE_DMA_WRITE_OP_TABLE_SIZE'] = 2**parameters['TX_SEQ_NUM_WIDTH']
     parameters['PCIE_DMA_WRITE_TX_LIMIT'] = 2**parameters['TX_SEQ_NUM_WIDTH']
-    parameters['PCIE_DMA_WRITE_TX_FC_ENABLE'] = 1
-    parameters['MSI_COUNT'] = 32
+
+    # Interrupt configuration
+    parameters['IRQ_INDEX_WIDTH'] = parameters['EVENT_QUEUE_INDEX_WIDTH']
 
     # AXI lite interface configuration (control)
     parameters['AXIL_CTRL_DATA_WIDTH'] = 32

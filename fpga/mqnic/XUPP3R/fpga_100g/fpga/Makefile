@@ -50,7 +50,7 @@ SYN_FILES += rtl/common/stats_dma_latency.v
 SYN_FILES += rtl/common/mqnic_tx_scheduler_block_rr.v
 SYN_FILES += rtl/common/tx_scheduler_rr.v
 SYN_FILES += rtl/common/cmac_pad.v
-SYN_FILES += rtl/common/cmac_ts_insert.v
+SYN_FILES += rtl/common/mac_ts_insert.v
 SYN_FILES += lib/eth/rtl/ptp_clock.v
 SYN_FILES += lib/eth/rtl/ptp_clock_cdc.v
 SYN_FILES += lib/eth/rtl/ptp_perout.v
@@ -80,6 +80,10 @@ SYN_FILES += lib/pcie/rtl/pcie_axil_master.v
 SYN_FILES += lib/pcie/rtl/pcie_tlp_demux.v
 SYN_FILES += lib/pcie/rtl/pcie_tlp_demux_bar.v
 SYN_FILES += lib/pcie/rtl/pcie_tlp_mux.v
+SYN_FILES += lib/pcie/rtl/pcie_tlp_fifo.v
+SYN_FILES += lib/pcie/rtl/pcie_tlp_fifo_raw.v
+SYN_FILES += lib/pcie/rtl/pcie_msix.v
+SYN_FILES += lib/pcie/rtl/irq_rate_limit.v
 SYN_FILES += lib/pcie/rtl/dma_if_pcie.v
 SYN_FILES += lib/pcie/rtl/dma_if_pcie_rd.v
 SYN_FILES += lib/pcie/rtl/dma_if_pcie_wr.v
@@ -98,7 +102,6 @@ SYN_FILES += lib/pcie/rtl/pcie_us_if_rq.v
 SYN_FILES += lib/pcie/rtl/pcie_us_if_cc.v
 SYN_FILES += lib/pcie/rtl/pcie_us_if_cq.v
 SYN_FILES += lib/pcie/rtl/pcie_us_cfg.v
-SYN_FILES += lib/pcie/rtl/pcie_us_msi.v
 SYN_FILES += lib/pcie/rtl/pulse_merge.v
 
 # XDC files
@@ -117,6 +120,7 @@ IP_TCL_FILES += ip/cmac_usplus_0.tcl
 IP_TCL_FILES += ip/cmac_usplus_1.tcl
 IP_TCL_FILES += ip/cmac_usplus_2.tcl
 IP_TCL_FILES += ip/cmac_usplus_3.tcl
+#IP_TCL_FILES += ip/ddr4_0.tcl
 
 # Configuration
 CONFIG_TCL_FILES = ./config.tcl

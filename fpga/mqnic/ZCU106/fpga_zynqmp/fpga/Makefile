@@ -91,6 +91,7 @@ SYN_FILES += lib/axis/rtl/axis_fifo_adapter.v
 SYN_FILES += lib/axis/rtl/axis_pipeline_fifo.v
 SYN_FILES += lib/axis/rtl/axis_register.v
 SYN_FILES += lib/axis/rtl/sync_reset.v
+SYN_FILES += lib/pcie/rtl/irq_rate_limit.v
 SYN_FILES += lib/pcie/rtl/dma_if_axi.v
 SYN_FILES += lib/pcie/rtl/dma_if_axi_rd.v
 SYN_FILES += lib/pcie/rtl/dma_if_axi_wr.v
@@ -118,6 +119,7 @@ XDC_FILES += ../../../common/syn/vivado/tdma_ber_ch.tcl
 # IP
 IP_TCL_FILES = ip/zynq_ps.tcl
 IP_TCL_FILES += ip/eth_xcvr_gth.tcl
+#IP_TCL_FILES += ip/ddr4_0.tcl
 
 # Configuration
 CONFIG_TCL_FILES = ./config.tcl

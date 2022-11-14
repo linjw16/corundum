@@ -100,6 +100,10 @@ SYN_FILES += lib/pcie/rtl/pcie_axil_master.v
 SYN_FILES += lib/pcie/rtl/pcie_tlp_demux.v
 SYN_FILES += lib/pcie/rtl/pcie_tlp_demux_bar.v
 SYN_FILES += lib/pcie/rtl/pcie_tlp_mux.v
+SYN_FILES += lib/pcie/rtl/pcie_tlp_fifo.v
+SYN_FILES += lib/pcie/rtl/pcie_tlp_fifo_raw.v
+SYN_FILES += lib/pcie/rtl/pcie_msix.v
+SYN_FILES += lib/pcie/rtl/irq_rate_limit.v
 SYN_FILES += lib/pcie/rtl/dma_if_pcie.v
 SYN_FILES += lib/pcie/rtl/dma_if_pcie_rd.v
 SYN_FILES += lib/pcie/rtl/dma_if_pcie_wr.v
@@ -118,7 +122,6 @@ SYN_FILES += lib/pcie/rtl/pcie_us_if_rq.v
 SYN_FILES += lib/pcie/rtl/pcie_us_if_cc.v
 SYN_FILES += lib/pcie/rtl/pcie_us_if_cq.v
 SYN_FILES += lib/pcie/rtl/pcie_us_cfg.v
-SYN_FILES += lib/pcie/rtl/pcie_us_msi.v
 SYN_FILES += lib/pcie/rtl/pulse_merge.v
 
 # XDC files
@@ -137,6 +140,7 @@ XDC_FILES += ../../../common/syn/vivado/tdma_ber_ch.tcl
 # IP
 IP_TCL_FILES = ip/pcie4_uscale_plus_0.tcl
 IP_TCL_FILES += ip/eth_xcvr_gty.tcl
+#IP_TCL_FILES += ip/ddr4_0.tcl
 
 # Configuration
 CONFIG_TCL_FILES = ./config.tcl

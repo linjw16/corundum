@@ -421,6 +421,7 @@ def test_fpga_core(request):
         os.path.join(axis_rtl_dir, "axis_fifo_adapter.v"),
         os.path.join(axis_rtl_dir, "axis_pipeline_fifo.v"),
         os.path.join(axis_rtl_dir, "axis_register.v"),
+        os.path.join(pcie_rtl_dir, "irq_rate_limit.v"),
         os.path.join(pcie_rtl_dir, "dma_if_axi.v"),
         os.path.join(pcie_rtl_dir, "dma_if_axi_rd.v"),
         os.path.join(pcie_rtl_dir, "dma_if_axi_wr.v"),
@@ -443,6 +444,10 @@ def test_fpga_core(request):
     parameters['PORTS_PER_IF'] = 1
     parameters['SCHED_PER_IF'] = parameters['PORTS_PER_IF']
     parameters['PORT_MASK'] = 0
+
+    # Clock configuration
+    parameters['CLK_PERIOD_NS_NUM'] = 10
+    parameters['CLK_PERIOD_NS_DENOM'] = 3
 
     # PTP configuration
     parameters['PTP_CLK_PERIOD_NS_NUM'] = 32
@@ -484,7 +489,6 @@ def test_fpga_core(request):
     parameters['PTP_TS_ENABLE'] = 1
     parameters['TX_CPL_FIFO_DEPTH'] = 32
     parameters['TX_CHECKSUM_ENABLE'] = 1
-    parameters['RX_RSS_ENABLE'] = 1
     parameters['RX_HASH_ENABLE'] = 1
     parameters['RX_CHECKSUM_ENABLE'] = 1
     parameters['TX_FIFO_DEPTH'] = 32768
