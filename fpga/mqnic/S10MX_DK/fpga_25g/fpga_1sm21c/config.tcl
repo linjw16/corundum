@@ -130,7 +130,6 @@ dict set params TDMA_INDEX_WIDTH "6"
 dict set params PTP_TS_ENABLE "1"
 dict set params TX_CPL_FIFO_DEPTH "32"
 dict set params TX_CHECKSUM_ENABLE "1"
-dict set params RX_RSS_ENABLE "1"
 dict set params RX_HASH_ENABLE "1"
 dict set params RX_CHECKSUM_ENABLE "1"
 dict set params TX_FIFO_DEPTH "32768"
@@ -156,17 +155,6 @@ dict set params DMA_TAG_WIDTH "16"
 dict set params RAM_ADDR_WIDTH [expr int(ceil(log(max([dict get $params TX_RAM_SIZE], [dict get $params RX_RAM_SIZE]))/log(2)))]
 dict set params RAM_PIPELINE "2"
 
-# PCIe interface configuration
-dict set params SEG_COUNT "1"
-dict set params SEG_DATA_WIDTH "256"
-dict set params SEG_EMPTY_WIDTH [expr int(ceil(log([dict get $params SEG_DATA_WIDTH]/32.0)/log(2)))]
-dict set params TX_SEQ_NUM_WIDTH "6"
-dict set params PCIE_TAG_COUNT "256"
-dict set params PCIE_DMA_READ_OP_TABLE_SIZE [dict get $params PCIE_TAG_COUNT]
-dict set params PCIE_DMA_READ_TX_LIMIT [expr 2**[dict get $params TX_SEQ_NUM_WIDTH]]
-dict set params PCIE_DMA_WRITE_OP_TABLE_SIZE [expr 2**[dict get $params TX_SEQ_NUM_WIDTH]]
-dict set params PCIE_DMA_WRITE_TX_LIMIT [expr 2**[dict get $params TX_SEQ_NUM_WIDTH]]
-
 # Interrupt configuration
 dict set params IRQ_INDEX_WIDTH [dict get $params EVENT_QUEUE_INDEX_WIDTH]
 
@@ -188,7 +176,7 @@ dict set params AXIS_ETH_RX_FIFO_PIPELINE "2"
 dict set params ETH_XCVR_GXT "1"
 
 # Statistics counter subsystem
-dict set params STAT_ENABLE "0"
+dict set params STAT_ENABLE "1"
 dict set params STAT_DMA_ENABLE "1"
 dict set params STAT_PCIE_ENABLE "1"
 dict set params STAT_INC_WIDTH "24"

@@ -9,6 +9,7 @@ set_property BITSTREAM.CONFIG.EXTMASTERCCLK_EN {DIV-1} [current_design]
 set_property BITSTREAM.CONFIG.SPI_32BIT_ADDR YES       [current_design]
 set_property BITSTREAM.CONFIG.SPI_BUSWIDTH 8           [current_design]
 set_property BITSTREAM.CONFIG.SPI_FALL_EDGE YES        [current_design]
+set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN Enable  [current_design]
 
 # System clocks
 # 300 MHz
@@ -159,7 +160,7 @@ set_property -dict {LOC AP21 IOSTANDARD LVCMOS18 PULLUP true} [get_ports qsfp1_i
 set_property -dict {LOC AN21 IOSTANDARD LVCMOS18 SLEW SLOW DRIVE 8} [get_ports qsfp1_lpmode]
 
 # 156.25 MHz MGT reference clock
-#create_clock -period 6.400 -name qsfp1_mgt_refclk_0 [get_ports qsfp1_mgt_refclk_0_p]
+create_clock -period 6.400 -name qsfp1_mgt_refclk_0 [get_ports qsfp1_mgt_refclk_0_p]
 
 set_false_path -to [get_ports {qsfp1_modsell qsfp1_resetl qsfp1_lpmode}]
 set_output_delay 0 [get_ports {qsfp1_modsell qsfp1_resetl qsfp1_lpmode}]
@@ -195,7 +196,7 @@ set_property -dict {LOC AT21 IOSTANDARD LVCMOS18 PULLUP true} [get_ports qsfp2_i
 set_property -dict {LOC AT24 IOSTANDARD LVCMOS18 SLEW SLOW DRIVE 8} [get_ports qsfp2_lpmode]
 
 # 156.25 MHz MGT reference clock
-#create_clock -period 6.400 -name qsfp2_mgt_refclk_0 [get_ports qsfp2_mgt_refclk_0_p]
+create_clock -period 6.400 -name qsfp2_mgt_refclk_0 [get_ports qsfp2_mgt_refclk_0_p]
 
 set_false_path -to [get_ports {qsfp2_modsell qsfp2_resetl qsfp2_lpmode}]
 set_output_delay 0 [get_ports {qsfp2_modsell qsfp2_resetl qsfp2_lpmode}]

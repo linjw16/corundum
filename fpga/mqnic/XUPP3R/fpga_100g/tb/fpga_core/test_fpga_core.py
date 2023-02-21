@@ -379,9 +379,32 @@ class TB(object):
         )
 
         dut.qsfp0_rx_status.setimmediatevalue(1)
+
+        cocotb.start_soon(Clock(dut.qsfp0_drp_clk, 8, units="ns").start())
+        dut.qsfp0_drp_rst.setimmediatevalue(0)
+        dut.qsfp0_drp_do.setimmediatevalue(0)
+        dut.qsfp0_drp_rdy.setimmediatevalue(0)
+
         dut.qsfp1_rx_status.setimmediatevalue(1)
+
+        cocotb.start_soon(Clock(dut.qsfp1_drp_clk, 8, units="ns").start())
+        dut.qsfp1_drp_rst.setimmediatevalue(0)
+        dut.qsfp1_drp_do.setimmediatevalue(0)
+        dut.qsfp1_drp_rdy.setimmediatevalue(0)
+
         dut.qsfp2_rx_status.setimmediatevalue(1)
+
+        cocotb.start_soon(Clock(dut.qsfp2_drp_clk, 8, units="ns").start())
+        dut.qsfp2_drp_rst.setimmediatevalue(0)
+        dut.qsfp2_drp_do.setimmediatevalue(0)
+        dut.qsfp2_drp_rdy.setimmediatevalue(0)
+
         dut.qsfp3_rx_status.setimmediatevalue(1)
+
+        cocotb.start_soon(Clock(dut.qsfp3_drp_clk, 8, units="ns").start())
+        dut.qsfp3_drp_rst.setimmediatevalue(0)
+        dut.qsfp3_drp_do.setimmediatevalue(0)
+        dut.qsfp3_drp_rdy.setimmediatevalue(0)
 
         dut.eeprom_i2c_scl_i.setimmediatevalue(1)
         dut.eeprom_i2c_sda_i.setimmediatevalue(1)
@@ -702,6 +725,7 @@ def test_fpga_core(request):
         os.path.join(rtl_dir, "common", "mqnic_ptp.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp_clock.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp_perout.v"),
+        os.path.join(rtl_dir, "common", "mqnic_rb_clk_info.v"),
         os.path.join(rtl_dir, "common", "mqnic_port_map_mac_axis.v"),
         os.path.join(rtl_dir, "common", "cpl_write.v"),
         os.path.join(rtl_dir, "common", "cpl_op_mux.v"),
@@ -718,6 +742,7 @@ def test_fpga_core(request):
         os.path.join(rtl_dir, "common", "tx_checksum.v"),
         os.path.join(rtl_dir, "common", "rx_hash.v"),
         os.path.join(rtl_dir, "common", "rx_checksum.v"),
+        os.path.join(rtl_dir, "common", "rb_drp.v"),
         os.path.join(rtl_dir, "common", "stats_counter.v"),
         os.path.join(rtl_dir, "common", "stats_collect.v"),
         os.path.join(rtl_dir, "common", "stats_pcie_if.v"),
@@ -863,11 +888,6 @@ def test_fpga_core(request):
     parameters['AXIS_PCIE_DATA_WIDTH'] = 512
     parameters['PF_COUNT'] = 1
     parameters['VF_COUNT'] = 0
-    parameters['PCIE_TAG_COUNT'] = 256
-    parameters['PCIE_DMA_READ_OP_TABLE_SIZE'] = parameters['PCIE_TAG_COUNT']
-    parameters['PCIE_DMA_READ_TX_LIMIT'] = 16
-    parameters['PCIE_DMA_WRITE_OP_TABLE_SIZE'] = 16
-    parameters['PCIE_DMA_WRITE_TX_LIMIT'] = 3
 
     # Interrupt configuration
     parameters['IRQ_INDEX_WIDTH'] = parameters['EVENT_QUEUE_INDEX_WIDTH']

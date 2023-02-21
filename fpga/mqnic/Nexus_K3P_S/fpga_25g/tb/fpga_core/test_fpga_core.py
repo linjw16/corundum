@@ -301,7 +301,7 @@ class TB(object):
         if hasattr(dut.core_inst.core_pcie_inst, 'pcie_app_ctrl'):
             self.dev.functions[0].configure_bar(2, 2**len(dut.core_inst.core_pcie_inst.axil_app_ctrl_araddr), ext=True, prefetch=True)
 
-        cocotb.start_soon(Clock(dut.ptp_clk, 6.206, units="ns").start())
+        cocotb.start_soon(Clock(dut.ptp_clk, 4, units="ns").start())
         dut.ptp_rst.setimmediatevalue(0)
         cocotb.start_soon(Clock(dut.ptp_sample_clk, 8, units="ns").start())
 
@@ -597,6 +597,7 @@ def test_fpga_core(request):
         os.path.join(rtl_dir, "common", "mqnic_ptp.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp_clock.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp_perout.v"),
+        os.path.join(rtl_dir, "common", "mqnic_rb_clk_info.v"),
         os.path.join(rtl_dir, "common", "mqnic_port_map_phy_xgmii.v"),
         os.path.join(rtl_dir, "common", "cpl_write.v"),
         os.path.join(rtl_dir, "common", "cpl_op_mux.v"),
@@ -765,11 +766,6 @@ def test_fpga_core(request):
     parameters['AXIS_PCIE_DATA_WIDTH'] = 256
     parameters['PF_COUNT'] = 1
     parameters['VF_COUNT'] = 0
-    parameters['PCIE_TAG_COUNT'] = 256
-    parameters['PCIE_DMA_READ_OP_TABLE_SIZE'] = parameters['PCIE_TAG_COUNT']
-    parameters['PCIE_DMA_READ_TX_LIMIT'] = 16
-    parameters['PCIE_DMA_WRITE_OP_TABLE_SIZE'] = 16
-    parameters['PCIE_DMA_WRITE_TX_LIMIT'] = 3
 
     # Interrupt configuration
     parameters['IRQ_INDEX_WIDTH'] = parameters['EVENT_QUEUE_INDEX_WIDTH']

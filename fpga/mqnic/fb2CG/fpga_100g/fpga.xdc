@@ -28,8 +28,8 @@ set_property -dict {LOC AU32 IOSTANDARD DIFF_SSTL12} [get_ports clk_ddr4_refclk1
 create_clock -period 3.750 -name clk_ddr4_refclk1 [get_ports clk_ddr4_refclk1_p]
 
 # DDR ref clock sharing
-set_property CLOCK_DEDICATED_ROUTE BACKBONE [get_pins -hier -filter {name =~ */u_ddr4_infrastructure/gen_mmcme*.u_mmcme_adv_inst/CLKIN1 && name =~*ddr4_c0_inst*}]
-set_property CLOCK_DEDICATED_ROUTE BACKBONE [get_pins -hier -filter {name =~ */u_ddr4_infrastructure/gen_mmcme*.u_mmcme_adv_inst/CLKIN1 && name =~*ddr4_c1_inst*}]
+set_property -quiet CLOCK_DEDICATED_ROUTE BACKBONE [get_pins -quiet -hier -filter {name =~ */u_ddr4_infrastructure/gen_mmcme*.u_mmcme_adv_inst/CLKIN1 && name =~*ddr4_c0_inst*}]
+set_property -quiet CLOCK_DEDICATED_ROUTE BACKBONE [get_pins -quiet -hier -filter {name =~ */u_ddr4_infrastructure/gen_mmcme*.u_mmcme_adv_inst/CLKIN1 && name =~*ddr4_c1_inst*}]
 
 # DDR4 refclk2
 set_property -dict {LOC G28  IOSTANDARD DIFF_SSTL12} [get_ports clk_ddr4_refclk2_p]
@@ -37,8 +37,8 @@ set_property -dict {LOC G29  IOSTANDARD DIFF_SSTL12} [get_ports clk_ddr4_refclk2
 create_clock -period 3.750 -name clk_ddr4_refclk2 [get_ports clk_ddr4_refclk2_p]
 
 # DDR ref clock sharing
-set_property CLOCK_DEDICATED_ROUTE BACKBONE [get_pins -hier -filter {name =~ */u_ddr4_infrastructure/gen_mmcme*.u_mmcme_adv_inst/CLKIN1 && name =~*ddr4_c2_inst*}]
-set_property CLOCK_DEDICATED_ROUTE BACKBONE [get_pins -hier -filter {name =~ */u_ddr4_infrastructure/gen_mmcme*.u_mmcme_adv_inst/CLKIN1 && name =~*ddr4_c3_inst*}]
+set_property -quiet CLOCK_DEDICATED_ROUTE BACKBONE [get_pins -quiet -hier -filter {name =~ */u_ddr4_infrastructure/gen_mmcme*.u_mmcme_adv_inst/CLKIN1 && name =~*ddr4_c2_inst*}]
+set_property -quiet CLOCK_DEDICATED_ROUTE BACKBONE [get_pins -quiet -hier -filter {name =~ */u_ddr4_infrastructure/gen_mmcme*.u_mmcme_adv_inst/CLKIN1 && name =~*ddr4_c3_inst*}]
 
 # LEDs
 set_property -dict {LOC C4   IOSTANDARD LVCMOS33 SLEW SLOW DRIVE 4} [get_ports led_sreg_d]
@@ -112,7 +112,7 @@ set_property -dict {LOC B8   IOSTANDARD LVCMOS33 SLEW SLOW DRIVE 4} [get_ports q
 set_property -dict {LOC B7   IOSTANDARD LVCMOS33 SLEW SLOW DRIVE 4} [get_ports qsfp_0_i2c_sda]
 
 # 161.1328125 MHz MGT reference clock
-#create_clock -period 6.206 -name qsfp_0_mgt_refclk [get_ports qsfp_0_mgt_refclk_p]
+create_clock -period 6.206 -name qsfp_0_mgt_refclk [get_ports qsfp_0_mgt_refclk_p]
 
 set_false_path -to [get_ports {qsfp_0_reset_n qsfp_0_lp_mode}]
 set_output_delay 0 [get_ports {qsfp_0_reset_n qsfp_0_lp_mode}]
@@ -150,7 +150,7 @@ set_property -dict {LOC C9   IOSTANDARD LVCMOS33 SLEW SLOW DRIVE 4} [get_ports q
 set_property -dict {LOC D8   IOSTANDARD LVCMOS33 SLEW SLOW DRIVE 4} [get_ports qsfp_1_i2c_sda]
 
 # 161.1328125 MHz MGT reference clock
-#create_clock -period 6.206 -name qsfp_1_mgt_refclk [get_ports qsfp_1_mgt_refclk_p]
+create_clock -period 6.206 -name qsfp_1_mgt_refclk [get_ports qsfp_1_mgt_refclk_p]
 
 set_false_path -to [get_ports {qsfp_1_reset_n qsfp_1_lp_mode}]
 set_output_delay 0 [get_ports {qsfp_1_reset_n qsfp_1_lp_mode}]

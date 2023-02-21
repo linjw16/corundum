@@ -140,23 +140,8 @@ module fpga #
 
     // PCIe interface configuration
     parameter AXIS_PCIE_DATA_WIDTH = 256,
-    parameter AXIS_PCIE_KEEP_WIDTH = (AXIS_PCIE_DATA_WIDTH/32),
-    parameter AXIS_PCIE_RC_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 75 : 161,
-    parameter AXIS_PCIE_RQ_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 62 : 137,
-    parameter AXIS_PCIE_CQ_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 85 : 183,
-    parameter AXIS_PCIE_CC_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 33 : 81,
-    parameter RC_STRADDLE = AXIS_PCIE_DATA_WIDTH >= 256,
-    parameter RQ_STRADDLE = AXIS_PCIE_DATA_WIDTH >= 512,
-    parameter CQ_STRADDLE = AXIS_PCIE_DATA_WIDTH >= 512,
-    parameter CC_STRADDLE = AXIS_PCIE_DATA_WIDTH >= 512,
-    parameter RQ_SEQ_NUM_WIDTH = AXIS_PCIE_RQ_USER_WIDTH == 60 ? 4 : 6,
     parameter PF_COUNT = 1,
     parameter VF_COUNT = 0,
-    parameter PCIE_TAG_COUNT = 256,
-    parameter PCIE_DMA_READ_OP_TABLE_SIZE = PCIE_TAG_COUNT,
-    parameter PCIE_DMA_READ_TX_LIMIT = 16,
-    parameter PCIE_DMA_WRITE_OP_TABLE_SIZE = 16,
-    parameter PCIE_DMA_WRITE_TX_LIMIT = 3,
 
     // Interrupt configuration
     parameter IRQ_INDEX_WIDTH = EVENT_QUEUE_INDEX_WIDTH,
@@ -188,6 +173,7 @@ module fpga #
     /*
      * Clock
      */
+    input  wire         clk_10mhz,
     input  wire         clk_ddr4_p,
     input  wire         clk_ddr4_n,
 
@@ -300,8 +286,8 @@ module fpga #
 );
 
 // PTP configuration
-parameter PTP_CLK_PERIOD_NS_NUM = 1024;
-parameter PTP_CLK_PERIOD_NS_DENOM = 165;
+parameter PTP_CLK_PERIOD_NS_NUM = 4;
+parameter PTP_CLK_PERIOD_NS_DENOM = 1;
 parameter PTP_TS_WIDTH = 96;
 parameter PTP_USE_SAMPLE_CLOCK = 1;
 parameter IF_PTP_PERIOD_NS = 6'h2;
@@ -312,6 +298,19 @@ parameter TX_TAG_WIDTH = 16;
 
 // RAM configuration
 parameter AXI_DDR_STRB_WIDTH = (AXI_DDR_DATA_WIDTH/8);
+
+// PCIe interface configuration
+parameter AXIS_PCIE_KEEP_WIDTH = (AXIS_PCIE_DATA_WIDTH/32);
+parameter AXIS_PCIE_RC_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 75 : 161;
+parameter AXIS_PCIE_RQ_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 62 : 137;
+parameter AXIS_PCIE_CQ_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 85 : 183;
+parameter AXIS_PCIE_CC_USER_WIDTH = AXIS_PCIE_DATA_WIDTH < 512 ? 33 : 81;
+parameter RC_STRADDLE = AXIS_PCIE_DATA_WIDTH >= 256;
+parameter RQ_STRADDLE = AXIS_PCIE_DATA_WIDTH >= 512;
+parameter CQ_STRADDLE = AXIS_PCIE_DATA_WIDTH >= 512;
+parameter CC_STRADDLE = AXIS_PCIE_DATA_WIDTH >= 512;
+parameter RQ_SEQ_NUM_WIDTH = 6;
+parameter PCIE_TAG_COUNT = 256;
 
 // Ethernet interface configuration
 parameter XGMII_DATA_WIDTH = 64;
@@ -409,6 +408,97 @@ sync_reset_125mhz_inst (
     .clk(clk_125mhz_int),
     .rst(~mmcm_locked),
     .out(rst_125mhz_int)
+);
+
+// Internal 250 MHz high-stability clock
+wire clk_10mhz_bufg;
+
+BUFG
+init_clk_bufg_inst (
+    .I(clk_10mhz),
+    .O(clk_10mhz_bufg)
+);
+
+wire clk_250mhz_mmcm_out;
+
+wire clk_250mhz_int;
+wire rst_250mhz_int;
+
+wire mmcm_250mhz_rst = rst_125mhz_int;
+wire mmcm_250mhz_locked;
+wire mmcm_250mhz_clkfb;
+
+// MMCM instance
+// 10 MHz in, 250 MHz out
+// PFD range: 10 MHz to 500 MHz
+// VCO range: 800 MHz to 1600 MHz
+// M = 100, D = 1 sets Fvco = 1000 MHz
+// Divide by 4 to get output frequency of 250 MHz
+MMCME4_BASE #(
+    .BANDWIDTH("OPTIMIZED"),
+    .CLKOUT0_DIVIDE_F(4),
+    .CLKOUT0_DUTY_CYCLE(0.5),
+    .CLKOUT0_PHASE(0),
+    .CLKOUT1_DIVIDE(1),
+    .CLKOUT1_DUTY_CYCLE(0.5),
+    .CLKOUT1_PHASE(0),
+    .CLKOUT2_DIVIDE(1),
+    .CLKOUT2_DUTY_CYCLE(0.5),
+    .CLKOUT2_PHASE(0),
+    .CLKOUT3_DIVIDE(1),
+    .CLKOUT3_DUTY_CYCLE(0.5),
+    .CLKOUT3_PHASE(0),
+    .CLKOUT4_DIVIDE(1),
+    .CLKOUT4_DUTY_CYCLE(0.5),
+    .CLKOUT4_PHASE(0),
+    .CLKOUT5_DIVIDE(1),
+    .CLKOUT5_DUTY_CYCLE(0.5),
+    .CLKOUT5_PHASE(0),
+    .CLKOUT6_DIVIDE(1),
+    .CLKOUT6_DUTY_CYCLE(0.5),
+    .CLKOUT6_PHASE(0),
+    .CLKFBOUT_MULT_F(100),
+    .CLKFBOUT_PHASE(0),
+    .DIVCLK_DIVIDE(1),
+    .REF_JITTER1(0.010),
+    .CLKIN1_PERIOD(100.000),
+    .STARTUP_WAIT("FALSE"),
+    .CLKOUT4_CASCADE("FALSE")
+)
+clk_250mhz_mmcm_inst (
+    .CLKIN1(clk_10mhz_bufg),
+    .CLKFBIN(mmcm_250mhz_clkfb),
+    .RST(mmcm_250mhz_rst),
+    .PWRDWN(1'b0),
+    .CLKOUT0(clk_250mhz_mmcm_out),
+    .CLKOUT0B(),
+    .CLKOUT1(),
+    .CLKOUT1B(),
+    .CLKOUT2(),
+    .CLKOUT2B(),
+    .CLKOUT3(),
+    .CLKOUT3B(),
+    .CLKOUT4(),
+    .CLKOUT5(),
+    .CLKOUT6(),
+    .CLKFBOUT(mmcm_250mhz_clkfb),
+    .CLKFBOUTB(),
+    .LOCKED(mmcm_250mhz_locked)
+);
+
+BUFG
+clk_250mhz_bufg_inst (
+    .I(clk_250mhz_mmcm_out),
+    .O(clk_250mhz_int)
+);
+
+sync_reset #(
+    .N(4)
+)
+sync_reset_250mhz_inst (
+    .clk(clk_250mhz_int),
+    .rst(~mmcm_250mhz_locked),
+    .out(rst_250mhz_int)
 );
 
 // GPIO
@@ -1299,8 +1389,8 @@ wire ptp_clk;
 wire ptp_rst;
 wire ptp_sample_clk;
 
-assign ptp_clk = qsfp_mgt_refclk_bufg;
-assign ptp_rst = qsfp_rst;
+assign ptp_clk = clk_250mhz_int;
+assign ptp_rst = rst_250mhz_int;
 assign ptp_sample_clk = clk_125mhz_int;
 
 assign qsfp_0_led_green = qsfp_0_rx_status_0;
@@ -1601,10 +1691,6 @@ fpga_core #(
     .PF_COUNT(PF_COUNT),
     .VF_COUNT(VF_COUNT),
     .PCIE_TAG_COUNT(PCIE_TAG_COUNT),
-    .PCIE_DMA_READ_OP_TABLE_SIZE(PCIE_DMA_READ_OP_TABLE_SIZE),
-    .PCIE_DMA_READ_TX_LIMIT(PCIE_DMA_READ_TX_LIMIT),
-    .PCIE_DMA_WRITE_OP_TABLE_SIZE(PCIE_DMA_WRITE_OP_TABLE_SIZE),
-    .PCIE_DMA_WRITE_TX_LIMIT(PCIE_DMA_WRITE_TX_LIMIT),
 
     // Interrupt configuration
     .IRQ_INDEX_WIDTH(IRQ_INDEX_WIDTH),
