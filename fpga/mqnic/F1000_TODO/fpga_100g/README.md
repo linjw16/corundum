@@ -1,12 +1,13 @@
-# Corundum mqnic for Resnic Co. Stargate F1000
+# Corundum mqnic for RESNICS Stargate F1000
 
 ## Introduction
 
-This design targets the Resnic Co. Stargate F1000@ZU19EG FPGA board.
+This design targets the RESNICS Stargate F1000@ZU19EG FPGA board.
 
 * FPGA: zu19eg-ffvc1760-2-e
 * MAC: Xilinx 100G CMAC
 * PHY: 100G CAUI-4 CMAC and internal GTY transceivers
+* RAM: 16GB DDR4 SDRAM x 72 bits
 
 ## How to build
 
@@ -18,7 +19,6 @@ installed, otherwise the driver cannot be compiled.
 
 ## How to test
 
-Run make program to program the board with Vivado.  Then load the
+Run make program to program the F1000@ZU19EG board with Vivado.  Then load the
 driver with insmod mqnic.ko.  Check dmesg for output from driver
 initialization.
-

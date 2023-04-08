@@ -1,0 +1,6 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1677053458" />
+    <testcase name="run_test" classname="test_fpga_core" file="/media/linjw/THU/Program_Files/prj/corundum/fpga/lib/pcie/example/F1000/fpga_msix/tb/fpga_core/test_fpga_core.py" lineno="286" time="16.349650382995605" sim_time_ns="15364.001" ratio_time="939.7143449611176" />
+  </testsuite>
+</testsuites>

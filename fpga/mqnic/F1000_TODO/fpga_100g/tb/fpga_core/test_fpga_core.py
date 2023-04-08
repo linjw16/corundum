@@ -63,7 +63,7 @@ except ImportError:
 
 
 class TB(object):
-    def __init__(self, dut):
+    def __init__(self, dut, msix_count=32):
         self.dut = dut
 
         self.log = SimLog("cocotb.tb")
@@ -81,10 +81,13 @@ class TB(object):
             pcie_link_width=16,
             user_clk_frequency=250e6,
             alignment="dword",
-            cq_cc_straddle=False,
-            rq_rc_straddle=False,
-            rc_4tlp_straddle=False,
-            enable_pf1=False,
+            cq_straddle=len(dut.core_inst.pcie_if_inst.pcie_us_if_cq_inst.rx_req_tlp_valid_reg) > 1,
+            cc_straddle=len(dut.core_inst.pcie_if_inst.pcie_us_if_cc_inst.out_tlp_valid) > 1,
+            rq_straddle=len(dut.core_inst.pcie_if_inst.pcie_us_if_rq_inst.out_tlp_valid) > 1,
+            rc_straddle=len(dut.core_inst.pcie_if_inst.pcie_us_if_rc_inst.rx_cpl_tlp_valid_reg) > 1,
+            rc_4tlp_straddle=len(dut.core_inst.pcie_if_inst.pcie_us_if_rc_inst.rx_cpl_tlp_valid_reg) > 2,
+            pf_count=1,
+            max_payload_size=1024,
             enable_client_tag=True,
             enable_extended_tag=True,
             enable_parity=False,
@@ -92,8 +95,38 @@ class TB(object):
             enable_sriov=False,
             enable_extended_configuration=False,
 
-            enable_pf0_msi=True,
-            enable_pf1_msi=False,
+            pf0_msi_enable=False,
+            pf0_msi_count=32,
+            pf1_msi_enable=False,
+            pf1_msi_count=1,
+            pf2_msi_enable=False,
+            pf2_msi_count=1,
+            pf3_msi_enable=False,
+            pf3_msi_count=1,
+            pf0_msix_enable=True,
+            pf0_msix_table_size=msix_count-1,
+            pf0_msix_table_bir=0,
+            pf0_msix_table_offset=0x00010000,
+            pf0_msix_pba_bir=0,
+            pf0_msix_pba_offset=0x00018000,
+            pf1_msix_enable=False,
+            pf1_msix_table_size=0,
+            pf1_msix_table_bir=0,
+            pf1_msix_table_offset=0x00000000,
+            pf1_msix_pba_bir=0,
+            pf1_msix_pba_offset=0x00000000,
+            pf2_msix_enable=False,
+            pf2_msix_table_size=0,
+            pf2_msix_table_bir=0,
+            pf2_msix_table_offset=0x00000000,
+            pf2_msix_pba_bir=0,
+            pf2_msix_pba_offset=0x00000000,
+            pf3_msix_enable=False,
+            pf3_msix_table_size=0,
+            pf3_msix_table_bir=0,
+            pf3_msix_table_offset=0x00000000,
+            pf3_msix_pba_bir=0,
+            pf3_msix_pba_offset=0x00000000,
 
             # signals
             # Clock and Reset Interface
@@ -219,31 +252,33 @@ class TB(object):
             # cfg_interrupt_int
             # cfg_interrupt_sent
             # cfg_interrupt_pending
-            cfg_interrupt_msi_enable=dut.cfg_interrupt_msi_enable,
-            cfg_interrupt_msi_mmenable=dut.cfg_interrupt_msi_mmenable,
-            cfg_interrupt_msi_mask_update=dut.cfg_interrupt_msi_mask_update,
-            cfg_interrupt_msi_data=dut.cfg_interrupt_msi_data,
-            # cfg_interrupt_msi_select=dut.cfg_interrupt_msi_select,
-            cfg_interrupt_msi_int=dut.cfg_interrupt_msi_int,
-            cfg_interrupt_msi_pending_status=dut.cfg_interrupt_msi_pending_status,
-            cfg_interrupt_msi_pending_status_data_enable=dut.cfg_interrupt_msi_pending_status_data_enable,
-            # cfg_interrupt_msi_pending_status_function_num=dut.cfg_interrupt_msi_pending_status_function_num,
-            cfg_interrupt_msi_sent=dut.cfg_interrupt_msi_sent,
-            cfg_interrupt_msi_fail=dut.cfg_interrupt_msi_fail,
-            # cfg_interrupt_msix_enable
-            # cfg_interrupt_msix_mask
-            # cfg_interrupt_msix_vf_enable
-            # cfg_interrupt_msix_vf_mask
-            # cfg_interrupt_msix_address
-            # cfg_interrupt_msix_data
-            # cfg_interrupt_msix_int
-            # cfg_interrupt_msix_vec_pending
-            # cfg_interrupt_msix_vec_pending_status
-            cfg_interrupt_msi_attr=dut.cfg_interrupt_msi_attr,
-            cfg_interrupt_msi_tph_present=dut.cfg_interrupt_msi_tph_present,
-            cfg_interrupt_msi_tph_type=dut.cfg_interrupt_msi_tph_type,
-            # cfg_interrupt_msi_tph_st_tag=dut.cfg_interrupt_msi_tph_st_tag,
-            # cfg_interrupt_msi_function_number=dut.cfg_interrupt_msi_function_number,
+            # cfg_interrupt_msi_enable
+            # cfg_interrupt_msi_mmenable
+            # cfg_interrupt_msi_mask_update
+            # cfg_interrupt_msi_data
+            # cfg_interrupt_msi_select
+            # cfg_interrupt_msi_int
+            # cfg_interrupt_msi_pending_status
+            # cfg_interrupt_msi_pending_status_data_enable
+            # cfg_interrupt_msi_pending_status_function_num
+            # cfg_interrupt_msi_sent
+            # cfg_interrupt_msi_fail
+            cfg_interrupt_msix_enable=dut.cfg_interrupt_msix_enable,
+            cfg_interrupt_msix_mask=dut.cfg_interrupt_msix_mask,
+            cfg_interrupt_msix_vf_enable=dut.cfg_interrupt_msix_vf_enable,
+            cfg_interrupt_msix_vf_mask=dut.cfg_interrupt_msix_vf_mask,
+            cfg_interrupt_msix_address=dut.cfg_interrupt_msix_address,
+            cfg_interrupt_msix_data=dut.cfg_interrupt_msix_data,
+            cfg_interrupt_msix_int=dut.cfg_interrupt_msix_int,
+            cfg_interrupt_msix_vec_pending=dut.cfg_interrupt_msix_vec_pending,
+            cfg_interrupt_msix_vec_pending_status=dut.cfg_interrupt_msix_vec_pending_status,
+            cfg_interrupt_msix_sent=dut.cfg_interrupt_msix_sent,
+            cfg_interrupt_msix_fail=dut.cfg_interrupt_msix_fail,
+            # cfg_interrupt_msi_attr
+            # cfg_interrupt_msi_tph_present
+            # cfg_interrupt_msi_tph_type
+            # cfg_interrupt_msi_tph_st_tag
+            cfg_interrupt_msi_function_number=dut.cfg_interrupt_msi_function_number,
 
             # Configuration Extend Interface
             # cfg_ext_read_received
@@ -260,17 +295,19 @@ class TB(object):
 
         self.rc.make_port().connect(self.dev)
 
-        self.driver = mqnic.Driver(self.rc)
-
-        self.dev.functions[0].msi_cap.msi_multiple_message_capable = 5
+        self.driver = mqnic.Driver()
 
         self.dev.functions[0].configure_bar(0, 2**len(dut.core_inst.core_pcie_inst.axil_ctrl_araddr), ext=True, prefetch=True)
         if hasattr(dut.core_inst.core_pcie_inst, 'pcie_app_ctrl'):
             self.dev.functions[0].configure_bar(2, 2**len(dut.core_inst.core_pcie_inst.axil_app_ctrl_araddr), ext=True, prefetch=True)
 
+        cocotb.start_soon(Clock(dut.ptp_clk, 6.206, units="ns").start())
+        dut.ptp_rst.setimmediatevalue(0)
+        cocotb.start_soon(Clock(dut.ptp_sample_clk, 8, units="ns").start())
+
         # Ethernet
-        cocotb.fork(Clock(dut.qsfp_0_rx_clk, 3.102, units="ns").start())
-        cocotb.fork(Clock(dut.qsfp_0_tx_clk, 3.102, units="ns").start())
+        cocotb.start_soon(Clock(dut.qsfp_0_rx_clk, 3.102, units="ns").start())
+        cocotb.start_soon(Clock(dut.qsfp_0_tx_clk, 3.102, units="ns").start())
 
         self.qsfp_0_mac = EthMac(
             tx_clk=dut.qsfp_0_tx_clk,
@@ -287,8 +324,8 @@ class TB(object):
             ifg=12, speed=100e9
         )
 
-        cocotb.fork(Clock(dut.qsfp_1_rx_clk, 3.102, units="ns").start())
-        cocotb.fork(Clock(dut.qsfp_1_tx_clk, 3.102, units="ns").start())
+        cocotb.start_soon(Clock(dut.qsfp_1_rx_clk, 3.102, units="ns").start())
+        cocotb.start_soon(Clock(dut.qsfp_1_tx_clk, 3.102, units="ns").start())
 
         self.qsfp_1_mac = EthMac(
             tx_clk=dut.qsfp_1_tx_clk,
@@ -305,10 +342,23 @@ class TB(object):
             ifg=12, speed=100e9
         )
 
+        dut.qsfp_0_rx_status.setimmediatevalue(1)
+        dut.qsfp_1_rx_status.setimmediatevalue(1)
+
+        cocotb.start_soon(Clock(dut.qsfp_0_drp_clk, 8, units="ns").start())
+        dut.qsfp_0_drp_rst.setimmediatevalue(0)
+        dut.qsfp_0_drp_do.setimmediatevalue(0)
+        dut.qsfp_0_drp_rdy.setimmediatevalue(0)
+
         dut.qsfp_0_i2c_scl_i.setimmediatevalue(1)
         dut.qsfp_0_i2c_sda_i.setimmediatevalue(1)
         dut.qsfp_0_intr_n.setimmediatevalue(1)
         dut.qsfp_0_mod_prsnt_n.setimmediatevalue(0)
+
+        cocotb.start_soon(Clock(dut.qsfp_1_drp_clk, 8, units="ns").start())
+        dut.qsfp_1_drp_rst.setimmediatevalue(0)
+        dut.qsfp_1_drp_do.setimmediatevalue(0)
+        dut.qsfp_1_drp_rdy.setimmediatevalue(0)
 
         dut.qsfp_1_i2c_scl_i.setimmediatevalue(1)
         dut.qsfp_1_i2c_sda_i.setimmediatevalue(1)
@@ -323,10 +373,11 @@ class TB(object):
         dut.bmc_int.setimmediatevalue(0)
 
         self.loopback_enable = False
-        cocotb.fork(self._run_loopback())
+        cocotb.start_soon(self._run_loopback())
 
     async def init(self):
 
+        self.dut.ptp_rst.setimmediatevalue(0)
         self.dut.qsfp_0_rx_rst.setimmediatevalue(0)
         self.dut.qsfp_0_tx_rst.setimmediatevalue(0)
         self.dut.qsfp_1_rx_rst.setimmediatevalue(0)
@@ -335,6 +386,7 @@ class TB(object):
         await RisingEdge(self.dut.clk_250mhz)
         await RisingEdge(self.dut.clk_250mhz)
 
+        self.dut.ptp_rst.setimmediatevalue(1)
         self.dut.qsfp_0_rx_rst.setimmediatevalue(1)
         self.dut.qsfp_0_tx_rst.setimmediatevalue(1)
         self.dut.qsfp_1_rx_rst.setimmediatevalue(1)
@@ -346,12 +398,13 @@ class TB(object):
         await RisingEdge(self.dut.clk_250mhz)
         await RisingEdge(self.dut.clk_250mhz)
 
+        self.dut.ptp_rst.setimmediatevalue(0)
         self.dut.qsfp_0_rx_rst.setimmediatevalue(0)
         self.dut.qsfp_0_tx_rst.setimmediatevalue(0)
         self.dut.qsfp_1_rx_rst.setimmediatevalue(0)
         self.dut.qsfp_1_tx_rst.setimmediatevalue(0)
 
-        await self.rc.enumerate(enable_bus_mastering=True, configure_msi=True)
+        await self.rc.enumerate()
 
     async def _run_loopback(self):
         while True:
@@ -367,23 +420,23 @@ class TB(object):
 @cocotb.test()
 async def run_test_nic(dut):
 
-    tb = TB(dut)
+    tb = TB(dut, msix_count=2**len(dut.core_inst.core_pcie_inst.irq_index))
 
     await tb.init()
 
     tb.log.info("Init driver")
-    await tb.driver.init_dev(tb.dev.functions[0].pcie_id)
+    await tb.driver.init_pcie_dev(tb.rc.find_device(tb.dev.functions[0].pcie_id))
     await tb.driver.interfaces[0].open()
-    # await driver.interfaces[1].open()
+    # await tb.driver.interfaces[1].open()
 
     # enable queues
     tb.log.info("Enable queues")
-    await tb.rc.mem_write_dword(tb.driver.interfaces[0].ports[0].hw_addr+mqnic.MQNIC_PORT_REG_SCHED_ENABLE, 0x00000001)
+    await tb.driver.interfaces[0].sched_blocks[0].schedulers[0].rb.write_dword(mqnic.MQNIC_RB_SCHED_RR_REG_CTRL, 0x00000001)
     for k in range(tb.driver.interfaces[0].tx_queue_count):
-        await tb.rc.mem_write_dword(tb.driver.interfaces[0].ports[0].schedulers[0].hw_addr+4*k, 0x00000003)
+        await tb.driver.interfaces[0].sched_blocks[0].schedulers[0].hw_regs.write_dword(4*k, 0x00000003)
 
     # wait for all writes to complete
-    await tb.rc.mem_read(tb.driver.hw_addr, 4)
+    await tb.driver.hw_regs.read_dword(0)
     tb.log.info("Init complete")
 
     tb.log.info("Send and receive single packet")
@@ -437,6 +490,61 @@ async def run_test_nic(dut):
     tb.log.info("Packet: %s", pkt)
     assert pkt.rx_checksum == ~scapy.utils.checksum(bytes(pkt.data[14:])) & 0xffff
     assert Ether(pkt.data).build() == test_pkt.build()
+
+    tb.log.info("Queue mapping offset test")
+
+    data = bytearray([x % 256 for x in range(1024)])
+
+    tb.loopback_enable = True
+
+    for k in range(4):
+        await tb.driver.interfaces[0].set_rx_queue_map_offset(0, k)
+
+        await tb.driver.interfaces[0].start_xmit(data, 0)
+
+        pkt = await tb.driver.interfaces[0].recv()
+
+        tb.log.info("Packet: %s", pkt)
+        assert pkt.rx_checksum == ~scapy.utils.checksum(bytes(pkt.data[14:])) & 0xffff
+        assert pkt.queue == k
+
+    tb.loopback_enable = False
+
+    await tb.driver.interfaces[0].set_rx_queue_map_offset(0, 0)
+
+    tb.log.info("Queue mapping RSS mask test")
+
+    await tb.driver.interfaces[0].set_rx_queue_map_rss_mask(0, 0x00000003)
+
+    tb.loopback_enable = True
+
+    queues = set()
+
+    for k in range(64):
+        payload = bytes([x % 256 for x in range(256)])
+        eth = Ether(src='5A:51:52:53:54:55', dst='DA:D1:D2:D3:D4:D5')
+        ip = IP(src='192.168.1.100', dst='192.168.1.101')
+        udp = UDP(sport=1, dport=k+0)
+        test_pkt = eth / ip / udp / payload
+
+        test_pkt2 = test_pkt.copy()
+        test_pkt2[UDP].chksum = scapy.utils.checksum(bytes(test_pkt2[UDP]))
+
+        await tb.driver.interfaces[0].start_xmit(test_pkt2.build(), 0, 34, 6)
+
+    for k in range(64):
+        pkt = await tb.driver.interfaces[0].recv()
+
+        tb.log.info("Packet: %s", pkt)
+        assert pkt.rx_checksum == ~scapy.utils.checksum(bytes(pkt.data[14:])) & 0xffff
+
+        queues.add(pkt.queue)
+
+    assert len(queues) == 4
+
+    tb.loopback_enable = False
+
+    await tb.driver.interfaces[0].set_rx_queue_map_rss_mask(0, 0)
 
     tb.log.info("Multiple small packets")
 
@@ -526,10 +634,21 @@ def test_fpga_core(request):
         os.path.join(rtl_dir, "common", "mqnic_core_pcie.v"),
         os.path.join(rtl_dir, "common", "mqnic_core.v"),
         os.path.join(rtl_dir, "common", "mqnic_interface.v"),
+        os.path.join(rtl_dir, "common", "mqnic_interface_tx.v"),
+        os.path.join(rtl_dir, "common", "mqnic_interface_rx.v"),
         os.path.join(rtl_dir, "common", "mqnic_port.v"),
+        os.path.join(rtl_dir, "common", "mqnic_port_tx.v"),
+        os.path.join(rtl_dir, "common", "mqnic_port_rx.v"),
+        os.path.join(rtl_dir, "common", "mqnic_egress.v"),
+        os.path.join(rtl_dir, "common", "mqnic_ingress.v"),
+        os.path.join(rtl_dir, "common", "mqnic_l2_egress.v"),
+        os.path.join(rtl_dir, "common", "mqnic_l2_ingress.v"),
+        os.path.join(rtl_dir, "common", "mqnic_rx_queue_map.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp_clock.v"),
         os.path.join(rtl_dir, "common", "mqnic_ptp_perout.v"),
+        os.path.join(rtl_dir, "common", "mqnic_rb_clk_info.v"),
+        os.path.join(rtl_dir, "common", "mqnic_port_map_mac_axis.v"),
         os.path.join(rtl_dir, "common", "cpl_write.v"),
         os.path.join(rtl_dir, "common", "cpl_op_mux.v"),
         os.path.join(rtl_dir, "common", "desc_fetch.v"),
@@ -537,11 +656,15 @@ def test_fpga_core(request):
         os.path.join(rtl_dir, "common", "event_mux.v"),
         os.path.join(rtl_dir, "common", "queue_manager.v"),
         os.path.join(rtl_dir, "common", "cpl_queue_manager.v"),
+        os.path.join(rtl_dir, "common", "tx_fifo.v"),
+        os.path.join(rtl_dir, "common", "rx_fifo.v"),
+        os.path.join(rtl_dir, "common", "tx_req_mux.v"),
         os.path.join(rtl_dir, "common", "tx_engine.v"),
         os.path.join(rtl_dir, "common", "rx_engine.v"),
         os.path.join(rtl_dir, "common", "tx_checksum.v"),
         os.path.join(rtl_dir, "common", "rx_hash.v"),
         os.path.join(rtl_dir, "common", "rx_checksum.v"),
+        os.path.join(rtl_dir, "common", "rb_drp.v"),
         os.path.join(rtl_dir, "common", "stats_counter.v"),
         os.path.join(rtl_dir, "common", "stats_collect.v"),
         os.path.join(rtl_dir, "common", "stats_pcie_if.v"),
@@ -553,7 +676,6 @@ def test_fpga_core(request):
         os.path.join(eth_rtl_dir, "ptp_clock.v"),
         os.path.join(eth_rtl_dir, "ptp_clock_cdc.v"),
         os.path.join(eth_rtl_dir, "ptp_perout.v"),
-        os.path.join(eth_rtl_dir, "ptp_ts_extract.v"),
         os.path.join(axi_rtl_dir, "axil_interconnect.v"),
         os.path.join(axi_rtl_dir, "axil_crossbar.v"),
         os.path.join(axi_rtl_dir, "axil_crossbar_addr.v"),
@@ -570,13 +692,19 @@ def test_fpga_core(request):
         os.path.join(axis_rtl_dir, "axis_arb_mux.v"),
         os.path.join(axis_rtl_dir, "axis_async_fifo.v"),
         os.path.join(axis_rtl_dir, "axis_async_fifo_adapter.v"),
+        os.path.join(axis_rtl_dir, "axis_demux.v"),
         os.path.join(axis_rtl_dir, "axis_fifo.v"),
+        os.path.join(axis_rtl_dir, "axis_fifo_adapter.v"),
         os.path.join(axis_rtl_dir, "axis_pipeline_fifo.v"),
         os.path.join(axis_rtl_dir, "axis_register.v"),
         os.path.join(pcie_rtl_dir, "pcie_axil_master.v"),
         os.path.join(pcie_rtl_dir, "pcie_tlp_demux.v"),
         os.path.join(pcie_rtl_dir, "pcie_tlp_demux_bar.v"),
         os.path.join(pcie_rtl_dir, "pcie_tlp_mux.v"),
+        os.path.join(pcie_rtl_dir, "pcie_tlp_fifo.v"),
+        os.path.join(pcie_rtl_dir, "pcie_tlp_fifo_raw.v"),
+        os.path.join(pcie_rtl_dir, "pcie_msix.v"),
+        os.path.join(pcie_rtl_dir, "irq_rate_limit.v"),
         os.path.join(pcie_rtl_dir, "dma_if_pcie.v"),
         os.path.join(pcie_rtl_dir, "dma_if_pcie_rd.v"),
         os.path.join(pcie_rtl_dir, "dma_if_pcie_wr.v"),
@@ -595,7 +723,6 @@ def test_fpga_core(request):
         os.path.join(pcie_rtl_dir, "pcie_us_if_cc.v"),
         os.path.join(pcie_rtl_dir, "pcie_us_if_cq.v"),
         os.path.join(pcie_rtl_dir, "pcie_us_cfg.v"),
-        os.path.join(pcie_rtl_dir, "pcie_us_msi.v"),
         os.path.join(pcie_rtl_dir, "pulse_merge.v"),
     ]
 
@@ -604,17 +731,31 @@ def test_fpga_core(request):
     # Structural configuration
     parameters['IF_COUNT'] = 2
     parameters['PORTS_PER_IF'] = 1
+    parameters['SCHED_PER_IF'] = parameters['PORTS_PER_IF']
+    parameters['PORT_MASK'] = 0
+
+    # Clock configuration
+    parameters['CLK_PERIOD_NS_NUM'] = 4
+    parameters['CLK_PERIOD_NS_DENOM'] = 1
 
     # PTP configuration
+    parameters['PTP_CLK_PERIOD_NS_NUM'] = 1024
+    parameters['PTP_CLK_PERIOD_NS_DENOM'] = 165
+    parameters['PTP_CLOCK_PIPELINE'] = 0
+    parameters['PTP_CLOCK_CDC_PIPELINE'] = 0
+    parameters['PTP_USE_SAMPLE_CLOCK'] = 1
+    parameters['PTP_SEPARATE_RX_CLOCK'] = 0
+    parameters['PTP_PORT_CDC_PIPELINE'] = 0
     parameters['PTP_PEROUT_ENABLE'] = 1
     parameters['PTP_PEROUT_COUNT'] = 1
 
-    # Queue manager configuration (interface)
+    # Queue manager configuration
     parameters['EVENT_QUEUE_OP_TABLE_SIZE'] = 32
     parameters['TX_QUEUE_OP_TABLE_SIZE'] = 32
     parameters['RX_QUEUE_OP_TABLE_SIZE'] = 32
     parameters['TX_CPL_QUEUE_OP_TABLE_SIZE'] = parameters['TX_QUEUE_OP_TABLE_SIZE']
     parameters['RX_CPL_QUEUE_OP_TABLE_SIZE'] = parameters['RX_QUEUE_OP_TABLE_SIZE']
+    parameters['EVENT_QUEUE_INDEX_WIDTH'] = 6
     parameters['TX_QUEUE_INDEX_WIDTH'] = 13
     parameters['RX_QUEUE_INDEX_WIDTH'] = 8
     parameters['TX_CPL_QUEUE_INDEX_WIDTH'] = parameters['TX_QUEUE_INDEX_WIDTH']
@@ -625,23 +766,19 @@ def test_fpga_core(request):
     parameters['TX_CPL_QUEUE_PIPELINE'] = parameters['TX_QUEUE_PIPELINE']
     parameters['RX_CPL_QUEUE_PIPELINE'] = parameters['RX_QUEUE_PIPELINE']
 
-    # TX and RX engine configuration (port)
+    # TX and RX engine configuration
     parameters['TX_DESC_TABLE_SIZE'] = 32
     parameters['RX_DESC_TABLE_SIZE'] = 32
 
-    # Scheduler configuration (port)
+    # Scheduler configuration
     parameters['TX_SCHEDULER_OP_TABLE_SIZE'] = parameters['TX_DESC_TABLE_SIZE']
     parameters['TX_SCHEDULER_PIPELINE'] = parameters['TX_QUEUE_PIPELINE']
     parameters['TDMA_INDEX_WIDTH'] = 6
 
-    # Timestamping configuration (port)
+    # Interface configuration
     parameters['PTP_TS_ENABLE'] = 1
-    parameters['TX_PTP_TS_FIFO_DEPTH'] = 32
-    parameters['RX_PTP_TS_FIFO_DEPTH'] = 32
-
-    # Interface configuration (port)
+    parameters['TX_CPL_FIFO_DEPTH'] = 32
     parameters['TX_CHECKSUM_ENABLE'] = 1
-    parameters['RX_RSS_ENABLE'] = 1
     parameters['RX_HASH_ENABLE'] = 1
     parameters['RX_CHECKSUM_ENABLE'] = 1
     parameters['TX_FIFO_DEPTH'] = 32768
@@ -652,6 +789,7 @@ def test_fpga_core(request):
     parameters['RX_RAM_SIZE'] = 131072
 
     # Application block configuration
+    parameters['APP_ID'] = 0x00000000
     parameters['APP_ENABLE'] = 0
     parameters['APP_CTRL_ENABLE'] = 1
     parameters['APP_DMA_ENABLE'] = 1
@@ -661,21 +799,20 @@ def test_fpga_core(request):
     parameters['APP_STAT_ENABLE'] = 1
 
     # DMA interface configuration
+    parameters['DMA_IMM_ENABLE'] = 0
+    parameters['DMA_IMM_WIDTH'] = 32
     parameters['DMA_LEN_WIDTH'] = 16
     parameters['DMA_TAG_WIDTH'] = 16
+    parameters['RAM_ADDR_WIDTH'] = (max(parameters['TX_RAM_SIZE'], parameters['RX_RAM_SIZE'])-1).bit_length()
     parameters['RAM_PIPELINE'] = 2
 
     # PCIe interface configuration
     parameters['AXIS_PCIE_DATA_WIDTH'] = 512
     parameters['PF_COUNT'] = 1
     parameters['VF_COUNT'] = 0
-    parameters['PCIE_TAG_COUNT'] = 64
-    parameters['PCIE_DMA_READ_OP_TABLE_SIZE'] = parameters['PCIE_TAG_COUNT']
-    parameters['PCIE_DMA_READ_TX_LIMIT'] = 16
-    parameters['PCIE_DMA_READ_TX_FC_ENABLE'] = 1
-    parameters['PCIE_DMA_WRITE_OP_TABLE_SIZE'] = 16
-    parameters['PCIE_DMA_WRITE_TX_LIMIT'] = 3
-    parameters['PCIE_DMA_WRITE_TX_FC_ENABLE'] = 1
+
+    # Interrupt configuration
+    parameters['IRQ_INDEX_WIDTH'] = parameters['EVENT_QUEUE_INDEX_WIDTH']
 
     # AXI lite interface configuration (control)
     parameters['AXIL_CTRL_DATA_WIDTH'] = 32
